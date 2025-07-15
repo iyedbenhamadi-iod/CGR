@@ -6,7 +6,7 @@ import ResultsDisplay from '@/components/ui/ResultsDisplay';
 import { Prospect, SearchResponse } from '@/types';
 
 export default function Dashboard() {
-  const [results, setResults] = useState<SearchResponse | null>(null);
+  const [results, setResults] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -29,19 +29,86 @@ export default function Dashboard() {
       }
 
       const data = await response.json();
+      console.log('🔍 API Response:', data);
       
-      // Ensure prospects is always an array
-      const resultsData: SearchResponse = {
-        ...data,
-        prospects: data.prospects || [] // Default to empty array if undefined
-      };
+      // Transform the API response to match ResultsDisplay expectations
+      const transformedData = transformApiResponse(data);
+      console.log('🔄 Transformed Data:', transformedData);
       
-      setResults(resultsData);
+      setResults(transformedData);
     } catch (err) {
       setError('Erreur lors de la recherche. Veuillez réessayer.');
       console.error('Erreur:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const transformApiResponse = (data: any) => {
+    const baseResponse = {
+      searchType: data.type,
+      totalFound: data.totalFound || 0,
+      cached: data.cached || false,
+      sources: data.sources || []
+    };
+
+    switch (data.type) {
+      case 'brainstorming':
+        return {
+          ...baseResponse,
+          marketOpportunities: data.markets?.map((market: any) => ({
+            nom_marche: market.nom_marche,
+            justification: market.justification,
+            produits_cgr_applicables: market.produits_cgr_applicables || [],
+            exemples_entreprises: market.exemples_entreprises || []
+          })) || []
+        };
+        
+     case 'concurrent': 
+  return { 
+    ...baseResponse, 
+    competitorAnalysis: data?.competitorAnalysis ? {
+      nom_entreprise: data.competitorAnalysis.nom_entreprise || '',
+      synthese: data.competitorAnalysis.synthese || '',
+      produits_services: data.competitorAnalysis.produits_services || [],
+      marches_cibles: data.competitorAnalysis.marches_cibles || [],
+      forces_apparentes: data.competitorAnalysis.forces_apparentes || [],
+      faiblesses_potentielles: data.competitorAnalysis.faiblesses_potentielles || [],
+      strategie_communication: data.competitorAnalysis.strategie_communication || '',
+      sources: data.competitorAnalysis.sources || []
+    } : null 
+  };
+
+      case 'enterprises':
+        return {
+          ...baseResponse,
+          prospects: data.prospects?.map((prospect: any) => ({
+            nom_entreprise: prospect.company,
+            site_web: prospect.website || '',
+            description_activite: prospect.sector || '',
+            produits_entreprise: prospect.cgrData?.produits_entreprise || [],
+            potentiel_cgr: {
+              produits_cibles_chez_le_prospect: prospect.cgrData?.produits_cibles_chez_le_prospect || [],
+              produits_cgr_a_proposer: prospect.cgrData?.produits_cgr_a_proposer || [],
+              argumentaire_approche: prospect.reason || ''
+            },
+            fournisseur_actuel_estimation: prospect.cgrData?.fournisseur_actuel_estimation || '',
+            contacts: prospect.contacts?.map((contact: any) => ({
+              nom: contact.name?.split(' ').pop() || '',
+              prenom: contact.name?.split(' ').slice(0, -1).join(' ') || contact.name || '',
+              poste: contact.position || '',
+              email: contact.email || undefined,
+              phone: contact.phone || undefined,
+              linkedin_url: contact.linkedin || undefined,
+              verified: contact.verified || false
+            })) || [],
+            score: prospect.score || 0,
+            sources: prospect.sources || []
+          })) || []
+        };
+
+      default:
+        return baseResponse;
     }
   };
 
@@ -66,7 +133,9 @@ export default function Dashboard() {
         )}
 
         {results && (
-          <ResultsDisplay {...results} />
+          <div className="mt-8">
+            <ResultsDisplay {...results} />
+          </div>
         )}
       </div>
     </div>

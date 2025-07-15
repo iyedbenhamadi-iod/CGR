@@ -1,24 +1,36 @@
 import axios from 'axios';
 
-interface Prospect {
-  company: string;
-  sector: string;
-  size: string;
-  address: string;
-  website: string;
-  score: number;
-  reason: string;
+interface Enterprise {
+  nom_entreprise: string;
+  site_web: string;
+  description_activite: string;
+  produits_entreprise: string[];
+  potentiel_cgr: {
+    produits_cibles_chez_le_prospect: string[];
+    produits_cgr_a_proposer: string[];
+    argumentaire_approche: string;
+  };
+  fournisseur_actuel_estimation: string;
   sources: string[];
+  taille_entreprise: string;
+  volume_pieces_estime: string;
+  zone_geographique: string;
 }
 
-interface ProspectResponse {
-  prospects: Prospect[];
-  total: number;
-  success?: boolean;
-  error?: string;
+interface EnterpriseSearchData {
+  secteursActivite: string[];
+  zoneGeographique: string[];
+  tailleEntreprise: string;
+  motsCles: string;
+  produitsCGR: string[];
+  volumePieces: number[];
+  clientsExclure: string;
+  usinesCGR: string[];
+  nombreResultats: number;
+  typeRecherche?: string;
 }
 
-export class PerplexityClient {
+export class PerplexityEnterpriseClient {
   private apiKey: string;
   private baseUrl = 'https://api.perplexity.ai';
 
@@ -29,21 +41,26 @@ export class PerplexityClient {
     }
   }
 
-  async searchProspects(query: string): Promise<any> {
+  async searchEnterprises(searchData: EnterpriseSearchData): Promise<any> {
+    const prompt = this.buildEnterpriseSearchPrompt(searchData);
+    
     try {
+      console.log('🔍 Recherche d\'entreprises avec Perplexity...');
+      console.log('📊 Paramètres de recherche:', {
+        secteur: searchData.secteursActivite[0],
+        zone: searchData.zoneGeographique.join(', '),
+        taille: searchData.tailleEntreprise,
+        produits: searchData.produitsCGR.join(', '),
+        volume: searchData.volumePieces[0]?.toLocaleString()
+      });
+      
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
           model: 'sonar',
           messages: [
-            {
-              role: 'system',
-              content: this.getSystemPrompt()
-            },
-            {
-              role: 'user',
-              content: query
-            }
+            { role: 'system', content: this.getSystemPrompt() },
+            { role: 'user', content: prompt }
           ],
           max_tokens: 4000,
           temperature: 0.2
@@ -52,305 +69,457 @@ export class PerplexityClient {
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 60000
         }
       );
       
-      return response.data;
+      console.log('✅ Réponse Perplexity reçue');
+      return this.parseEnterpriseResponse(response.data);
     } catch (error: any) {
-      console.error('❌ Erreur Perplexity API:', error.response?.status);
-      throw error;
+      console.error('❌ Erreur Perplexity API:', {
+        status: error.response?.status,
+        message: error.message,
+        data: error.response?.data
+      });
+      
+      return {
+        enterprises: [],
+        total: 0,
+        success: false,
+        error: `Perplexity API Error: ${error.response?.status || 'Unknown'} - ${error.message}`
+      };
     }
   }
 
   private getSystemPrompt(): string {
-  return `Expert prospection B2B pour CGR - Fabricant français de ressorts industriels.
+    return `Tu es un expert en intelligence économique spécialisé dans l'identification de prospects pour CGR International, fabricant français de composants mécaniques industriels.
 
-MISSION: Identifier 8-10 entreprises CLIENTES potentielles qui UTILISENT des ressorts industriels.
+MISSION CRITIQUE: Identifier des entreprises CLIENTES potentielles qui UTILISENT des composants mécaniques dans leurs produits manufacturés.
 
-⚠️ IMPORTANT: Chercher des UTILISATEURS de ressorts, PAS des fabricants de ressorts !
+EXPERTISE CGR DISPONIBLE:
+- Ressorts (fil, plat, torsion) - haute précision
+- Pièces découpées de précision
+- Formage de tubes
+- Assemblages automatisés
+- Mécatronique
+- Injection plastique
 
-CIBLES PRIORITAIRES:
-- Constructeurs machines industrielles (utilisant ressorts de compression, traction)
-- Fabricants équipements automobiles (amortisseurs, sièges, pièces mécaniques)
-- Industriels aéronautique/spatial (systèmes de suspension, mécanismes)
-- Fabricants mobilier/literie (ressorts matelas, sièges, mécanismes)
-- Constructeurs équipements agricoles (systèmes hydrauliques, suspensions)
-- Fabricants électroménager (lave-linge, réfrigérateurs, mécanismes)
-- Industriels ferroviaire (bogies, suspensions, attelages)
-- Fabricants outillage industriel (presses, machines-outils)
+RÈGLES ABSOLUES DE CIBLAGE:
+✅ CHERCHER: Entreprises qui ACHÈTENT et UTILISENT des composants mécaniques
+✅ FOCUS: Fabricants de produits finis intégrant des composants mécaniques
+✅ CIBLE: Entreprises ayant des besoins en composants de précision
 
-EXCLURE ABSOLUMENT:
+❌ EXCLURE ABSOLUMENT:
 - Fabricants de ressorts (concurrents directs)
-- Grossistes/distributeurs de ressorts
-- Entreprises "CGR" ou similaires
-
-RÉPONSE JSON STRICT:
-{
-  "prospects": [
-    {
-      "company": "Nom exact entreprise",
-      "sector": "Secteur d'activité précis",
-      "size": "PME/ETI/Grand groupe + effectifs estimés",
-      "address": "Adresse complète avec ville",
-      "website": "https://...",
-      "score": 8.5,
-      "reason": "Analyse détaillée minimum 150 mots: produits fabriqués nécessitant des ressorts, types de ressorts requis (compression/traction/torsion), contraintes techniques spécifiques, pourquoi CGR serait pertinent comme fournisseur, volume potentiel estimé",
-      "sources": ["url1", "url2"]
-    }
-  ],
-  "total": 8
-}
-
-FOCUS: Entreprises UTILISATRICES de ressorts, analyse technique détaillée du besoin.`;
-}
-
-buildSearchQuery(product: string, location: string, referenceUrls?: string[]): string {
-  // Mapping des produits vers les secteurs utilisateurs
-  const productToSectors: { [key: string]: string[] } = {
-    'ressort à compression': [
-      'constructeurs machines industrielles',
-      'fabricants équipements automobiles',
-      'industriels aéronautique',
-      'fabricants mobilier bureau',
-      'constructeurs équipements agricoles'
-    ],
-    'ressort de traction': [
-      'fabricants équipements fitness',
-      'constructeurs machines textiles',
-      'industriels ferroviaire',
-      'fabricants outillage industriel'
-    ],
-    'ressort de torsion': [
-      'fabricants serrurerie',
-      'constructeurs équipements électroniques',
-      'industriels automobile',
-      'fabricants mécanismes horlogerie'
-    ],
-    'ressort sur mesure': [
-      'bureaux études mécaniques',
-      'prototypistes industriels',
-      'fabricants équipements spécialisés'
-    ]
-  };
-
-  const targetSectors = productToSectors[product.toLowerCase()] || [
-    'constructeurs machines industrielles',
-    'fabricants équipements mécaniques',
-    'industriels manufacturing'
-  ];
-
-  return `Recherche entreprises UTILISATRICES de ressorts industriels - Produit: "${product}" - Zone: "${location}"
-
-🎯 CHERCHER DES CLIENTS POTENTIELS (qui achètent des ressorts), PAS des fabricants de ressorts !
-
-SECTEURS CIBLES:
-${targetSectors.map(sector => `- ${sector}`).join('\n')}
-
-RECHERCHE SPÉCIFIQUE:
-- Entreprises fabriquant des produits incorporant des ${product}
-- Constructeurs nécessitant des ressorts dans leurs assemblages
-- Industriels avec besoins de pièces mécaniques élastiques
-- Bureaux d'études développant des mécanismes à ressorts
-
-EXCLURE ABSOLUMENT:
-- Fabricants de ressorts (concurrents)
-- Grossistes/distributeurs de ressorts
+- Grossistes/distributeurs de composants mécaniques
+- Entreprises de négoce en composants
 - Entreprises nommées "CGR" ou similaires
+- Sous-traitants mécaniques généralistes
 
-${referenceUrls?.length ? `RÉFÉRENCES SECTORIELLES: ${referenceUrls.slice(0, 2).join(', ')}` : ''}
+CONTRAINTES STRICTES:
+- Utiliser UNIQUEMENT les produits CGR spécifiés par l'utilisateur
+- Respecter la taille d'entreprise demandée
+- Cibler la zone géographique spécifiée
+- Adapter au volume de pièces requis
 
-COLLECTE: nom + secteur + taille + adresse + site web + analyse détaillée du besoin en ressorts.
-
-FOCUS: Entreprises qui ACHÈTENT des ressorts pour leurs produits, pas qui en vendent !`;
+RÉPONSE JSON OBLIGATOIRE avec exactement cette structure:
+{
+  "enterprises": [
+    {
+      "nom_entreprise": "...",
+      "site_web": "...",
+      "description_activite": "...",
+      "produits_entreprise": ["...", "..."],
+      "potentiel_cgr": {
+        "produits_cibles_chez_le_prospect": ["...", "..."],
+        "produits_cgr_a_proposer": ["Uniquement les produits spécifiés"],
+        "argumentaire_approche": "..."
+      },
+      "fournisseur_actuel_estimation": "...",
+      "sources": ["...", "..."],
+      "taille_entreprise": "Taille spécifiée par l'utilisateur",
+      "volume_pieces_estime": "Volume compatible avec les spécifications",
+      "zone_geographique": "Zone géographique de l'entreprise"
+    }
+  ]
 }
 
-// Méthode pour valider qu'un prospect n'est pas un fabricant de ressorts
-private isValidProspect(prospect: any): boolean {
-  const company = prospect.company?.toLowerCase() || '';
-  const sector = prospect.sector?.toLowerCase() || '';
-  const reason = prospect.reason?.toLowerCase() || '';
-  
-  // Mots-clés à exclure (fabricants de ressorts)
-  const excludeKeywords = [
-    'ressort', 'spring', 'fabricant ressort', 'manufacturer spring',
-    'cgr', 'producteur ressort', 'usine ressort', 'forge ressort'
-  ];
-  
-  // Vérifier si c'est un fabricant de ressorts
-  const isSpringManufacturer = excludeKeywords.some(keyword => 
-    company.includes(keyword) || 
-    sector.includes(keyword) || 
-    reason.includes('fabricant de ressort') ||
-    reason.includes('produit des ressorts')
-  );
-  
-  // Mots-clés positifs (utilisateurs de ressorts)
-  const positiveKeywords = [
-    'machine', 'équipement', 'automobile', 'aéronautique',
-    'mobilier', 'électroménager', 'outillage', 'mécanique',
-    'industriel', 'constructeur', 'assemblage', 'manufacturing'
-  ];
-  
-  const isGoodTarget = positiveKeywords.some(keyword =>
-    sector.includes(keyword) || reason.includes(keyword)
-  );
-  
-  return !isSpringManufacturer && isGoodTarget && prospect.reason?.length > 50;
-}
+VALIDATION FINALE:
+- Chaque entreprise doit utiliser au moins un des produits CGR spécifiés
+- La taille doit correspondre exactement à celle demandée
+- Le volume doit être compatible avec les spécifications
+- Les sources doivent être récentes et fiables`;
+  }
 
-  parseProspectsResponse(response: any): ProspectResponse {
-  try {
-    const content = response.choices[0]?.message?.content || '';
-    console.log('📄 Contenu brut reçu:', content.substring(0, 500) + '...');
-    
-    // Méthode 1: Chercher un bloc JSON complet
-    let jsonMatch = content.match(/\{[\s\S]*"prospects"[\s\S]*\[[\s\S]*?\][\s\S]*?\}/);
-    
-    if (!jsonMatch) {
-      // Méthode 2: Chercher entre ```json et ```
-      const codeBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-      if (codeBlockMatch) {
-        jsonMatch = [codeBlockMatch[1]];
-      }
-    }
-    
-    if (!jsonMatch) {
-      // Méthode 3: Chercher un tableau prospects directement
-      const arrayMatch = content.match(/"prospects"\s*:\s*\[[\s\S]*?\]/);
-      if (arrayMatch) {
-        jsonMatch = [`{${arrayMatch[0]}, "total": 0}`];
-      }
-    }
-    
-    if (!jsonMatch) {
-      console.error('❌ Aucun JSON valide trouvé dans la réponse');
-      return { prospects: [], total: 0, success: false, error: 'Format JSON non trouvé' };
-    }
-    
-    let jsonString = jsonMatch[0];
-    console.log('🔍 JSON extrait:', jsonString.substring(0, 300) + '...');
-    
-    // Nettoyage du JSON
-    jsonString = this.cleanJsonString(jsonString);
-    
-    // Tentative de parsing avec gestion d'erreurs spécifiques
-    let parsed;
-    try {
-      parsed = JSON.parse(jsonString);
-    } catch (parseError: any) {
-      console.error('❌ Erreur JSON parsing:', parseError.message);
-      console.error('🔍 Position erreur:', parseError.message.match(/position (\d+)/)?.[1]);
+  private buildEnterpriseSearchPrompt(data: EnterpriseSearchData): string {
+    const excludeClients = [
+      'Forvia', 'Valeo', 'Schneider Electric', 'Dassault Aviation', 'Thales', 'Safran',
+      ...(data.clientsExclure ? data.clientsExclure.split('\n').filter(Boolean) : [])
+    ];
+
+    const secteurPrincipal = data.secteursActivite[0] || 'Industriel';
+    const zoneGeo = data.zoneGeographique.length > 0 ? data.zoneGeographique.join(', ') : 'France et Europe';
+    const tailleEntreprise = data.tailleEntreprise || 'Toutes tailles';
+    const volumePieces = data.volumePieces && data.volumePieces.length > 0 ? data.volumePieces[0] : 50000;
+    const produitsCGRSpecifiques = data.produitsCGR.length > 0 ? data.produitsCGR : ['Ressorts fil'];
+    const motsCles = data.motsCles || 'composants mécaniques, précision, qualité';
+    const usinesCGR = data.usinesCGR || ['Saint-Yorre', 'PMPC', 'Igé'];
+
+    return `RECHERCHE CIBLÉE: ${data.nombreResultats} entreprises CLIENTES potentielles pour CGR International
+
+**CONTRAINTES STRICTES À RESPECTER:**
+
+**Secteur d'activité OBLIGATOIRE:** ${secteurPrincipal}
+- Focus exclusif sur ce secteur
+- Entreprises qui fabriquent des produits dans ce secteur
+
+**Zone géographique ciblée:** ${zoneGeo}
+- Priorité aux entreprises dans ces zones
+- Proximité avec les usines CGR: ${usinesCGR.join(', ')}
+
+**Taille d'entreprise EXACTE:** ${tailleEntreprise}
+${this.getTailleEntrepriseGuidance(tailleEntreprise)}
+
+**Produits CGR AUTORISÉS (AUCUN AUTRE):** ${produitsCGRSpecifiques.join(', ')}
+⚠️ CRITIQUE: Ne proposer QUE ces produits dans "produits_cgr_a_proposer"
+
+**Volume de pièces cible:** ${volumePieces.toLocaleString()} pièces/an
+- Entreprises ayant des besoins compatibles avec ce volume
+- Capacité de production adaptée
+
+**Mots-clés spécifiques:** ${motsCles}
+- Utiliser pour affiner la recherche
+- Identifier les besoins correspondants
+
+**Exclusions absolues:** ${excludeClients.join(', ')}
+- Éviter ces entreprises et leurs filiales
+- Exclure les concurrents directs
+
+**STRATÉGIE DE RECHERCHE SECTORIELLE:**
+${this.getSectorSpecificSearchStrategy(secteurPrincipal, produitsCGRSpecifiques)}
+
+**CRITÈRES DE QUALIFICATION:**
+1. **Activité principale:** Fabrication de produits finis dans le secteur "${secteurPrincipal}"
+2. **Besoins identifiés:** Utilisation de "${produitsCGRSpecifiques.join(', ')}" dans leurs produits
+3. **Taille confirmée:** Correspond exactement à "${tailleEntreprise}"
+4. **Volume compatible:** Besoins annuels autour de ${volumePieces.toLocaleString()} pièces
+5. **Localisation:** Basée dans "${zoneGeo}"
+
+**INFORMATIONS REQUISES PAR ENTREPRISE:**
+- Nom officiel et site web
+- Description précise de l'activité
+- Produits fabriqués nécessitant des composants mécaniques
+- Potentiel d'utilisation des produits CGR spécifiés
+- Estimation du fournisseur actuel
+- Sources d'information fiables
+
+**VALIDATION FINALE:**
+- Chaque entreprise doit être un CLIENT potentiel, pas un concurrent
+- Les produits CGR proposés doivent être limités à: ${produitsCGRSpecifiques.join(', ')}
+- La taille et le volume doivent correspondre exactement
+- Les sources doivent être récentes et vérifiables
+
+Retourne uniquement le JSON demandé, sans texte supplémentaire.`;
+  }
+
+  private getTailleEntrepriseGuidance(taille: string): string {
+    switch (taille) {
+      case 'PME':
+        return `- Cibler des PME (50-250 salariés)
+- Entreprises avec besoins spécifiques et flexibilité
+- Volumes moyens mais réguliers
+- Capacité de décision rapide`;
       
-      // Tentative de réparation automatique
-      const repairedJson = this.repairJsonString(jsonString);
-      if (repairedJson) {
-        try {
-          parsed = JSON.parse(repairedJson);
-          console.log('✅ JSON réparé avec succès');
-        } catch (repairError) {
-          console.error('❌ Impossible de réparer le JSON');
-          return { prospects: [], total: 0, success: false, error: `Erreur JSON: ${parseError.message}` };
-        }
-      } else {
-        return { prospects: [], total: 0, success: false, error: `Erreur JSON: ${parseError.message}` };
-      }
+      case 'ETI':
+        return `- Cibler des ETI (250-5000 salariés)
+- Entreprises avec volumes moyens à importants
+- Processus de décision structuré
+- Besoins en qualité et régularité`;
+      
+      case 'Grande entreprise':
+        return `- Cibler des grandes entreprises (5000+ salariés)
+- Volumes importants et contrats long terme
+- Exigences qualité très élevées
+- Processus de qualification rigoureux`;
+      
+      default:
+        return `- Toutes tailles d'entreprises
+- Adapter l'approche selon la taille`;
     }
-    
-    // Validation de la structure
-    if (!parsed || !Array.isArray(parsed.prospects)) {
-      console.error('❌ Structure JSON invalide:', parsed);
-      return { prospects: [], total: 0, success: false, error: 'Structure prospects invalide' };
-    }
-    
-    // Nettoyage et validation des prospects
-    const cleanedProspects = parsed.prospects
-      .filter((p: any) => {
-        const isValid = p && typeof p === 'object' && p.company && p.reason && p.reason.length > 50;
-        if (!isValid) {
-          console.log('⚠️ Prospect invalide ignoré:', p);
-        }
-        return isValid;
-      })
-      .map((prospect: any) => ({
-        company: String(prospect.company).trim(),
-        sector: String(prospect.sector || 'Non spécifié').trim(),
-        size: String(prospect.size || 'Non spécifié').trim(),
-        address: String(prospect.address || 'Non spécifiée').trim(),
-        website: this.cleanWebsiteUrl(prospect.website || ''),
-        score: Math.min(10, Math.max(1, Number(prospect.score) || 5)),
-        reason: String(prospect.reason).trim(),
-        sources: Array.isArray(prospect.sources) ? prospect.sources.filter(Boolean) : []
-      }));
-    
-    console.log(`✅ ${cleanedProspects.length} prospects valides extraits`);
-    
-    return {
-      prospects: cleanedProspects,
-      total: cleanedProspects.length,
-      success: true
-    };
-    
-  } catch (error: any) {
-    console.error('❌ Erreur parsing globale:', error);
-    return { prospects: [], total: 0, success: false, error: `Erreur parsing: ${error.message}` };
   }
-}
 
-private cleanJsonString(jsonString: string): string {
-  return jsonString
-    // Supprimer les caractères de contrôle
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
-    // Réparer les guillemets échappés incorrectement
-    .replace(/\\"/g, '"')
-    .replace(/\\'/g, "'")
-    // Supprimer les virgules en fin de tableau/objet
-    .replace(/,(\s*[}\]])/g, '$1')
-    // Supprimer les espaces en trop
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+  private getSectorSpecificSearchStrategy(secteur: string, produitsCGR: string[]): string {
+    const produitsStr = produitsCGR.join(', ');
+    
+    switch (secteur.toLowerCase()) {
+      case 'médical':
+        return `SECTEUR MÉDICAL - Rechercher des fabricants de:
+• Dispositifs médicaux intégrant des ${produitsStr}
+• Équipements hospitaliers avec mécanismes précis
+• Instruments chirurgicaux nécessitant des composants ressort
+• Appareils de diagnostic avec systèmes mécaniques
+• Prothèses et orthèses avec mécanismes de précision
+• Matériel de rééducation avec composants mécaniques`;
+        
+      case 'aéronautique':
+        return `SECTEUR AÉRONAUTIQUE - Rechercher des fabricants de:
+• Composants d'aéronefs nécessitant des ${produitsStr}
+• Équipements de cabine avec mécanismes précis
+• Systèmes de navigation intégrant des composants mécaniques
+• Équipements de sécurité aéronautique
+• Outillage aéronautique spécialisé
+• Composants satellites et drones`;
+        
+      case 'automobile':
+        return `SECTEUR AUTOMOBILE - Rechercher des fabricants de:
+• Systèmes de sécurité automobile intégrant des ${produitsStr}
+• Composants d'habitacle avec mécanismes précis
+• Équipements électriques automobile
+• Accessoires et équipements de confort
+• Systèmes de freinage et suspension (hors grands constructeurs)
+• Outillage automobile spécialisé`;
+        
+      case 'énergie':
+        return `SECTEUR ÉNERGIE - Rechercher des fabricants de:
+• Équipements éoliens nécessitant des ${produitsStr}
+• Systèmes solaires avec composants mécaniques
+• Équipements de stockage d'énergie
+• Installations de production d'énergie
+• Systèmes de distribution énergétique
+• Équipements de mesure et contrôle énergétique`;
+        
+      case 'défense':
+        return `SECTEUR DÉFENSE - Rechercher des fabricants de:
+• Équipements militaires intégrant des ${produitsStr}
+• Systèmes d'armes avec mécanismes précis
+• Véhicules blindés et composants
+• Équipements de communication militaire
+• Systèmes de protection et sécurité
+• Matériel d'entraînement militaire`;
+        
+      default:
+        return `SECTEUR INDUSTRIEL - Rechercher des fabricants de:
+• Machines spéciales nécessitant des ${produitsStr}
+• Équipements automatisés avec mécanismes précis
+• Systèmes de manutention et transport
+• Outillage industriel spécialisé
+• Équipements de mesure et contrôle
+• Machines de production spécifiques`;
+    }
+  }
 
-private repairJsonString(jsonString: string): string | null {
-  try {
-    // Tentative 1: Supprimer le dernier élément potentiellement corrompu
-    const lastCommaIndex = jsonString.lastIndexOf(',');
-    if (lastCommaIndex > 0) {
-      const withoutLast = jsonString.substring(0, lastCommaIndex) + ']}';
-      try {
-        JSON.parse(withoutLast);
-        return withoutLast;
-      } catch (e) {
-        // Continue avec d'autres tentatives
-      }
-    }
-    
-    // Tentative 2: Fermer les structures ouvertes
-    let balanced = jsonString;
-    const openBraces = (balanced.match(/\{/g) || []).length;
-    const closeBraces = (balanced.match(/\}/g) || []).length;
-    const openBrackets = (balanced.match(/\[/g) || []).length;
-    const closeBrackets = (balanced.match(/\]/g) || []).length;
-    
-    // Ajouter les fermetures manquantes
-    for (let i = 0; i < openBrackets - closeBrackets; i++) {
-      balanced += ']';
-    }
-    for (let i = 0; i < openBraces - closeBraces; i++) {
-      balanced += '}';
-    }
-    
+  private parseEnterpriseResponse(response: any): { enterprises: Enterprise[], total: number, success: boolean, error?: string } {
     try {
-      JSON.parse(balanced);
-      return balanced;
-    } catch (e) {
-      return null;
+      const content = response.choices[0]?.message?.content || '';
+      console.log('📄 Contenu reçu (premiers 500 chars):', content.substring(0, 500) + '...');
+      
+      // Multiple strategies to extract JSON
+      let jsonStr = this.extractJsonFromContent(content);
+      let parsed: any;
+      
+      // Try direct parsing first
+      try {
+        parsed = JSON.parse(jsonStr);
+        console.log('✅ Parsing direct réussi');
+      } catch (error) {
+        console.log('⚠️ Parsing direct échoué, tentative de réparation...');
+        
+        // Try repair and parse
+        jsonStr = this.repairJsonString(jsonStr);
+        try {
+          parsed = JSON.parse(jsonStr);
+          console.log('✅ Parsing avec réparation réussi');
+        } catch (error2) {
+          console.log('⚠️ Parsing avec réparation échoué, tentative de parsing manuel...');
+          
+          // Manual parsing as last resort
+          const manualResults = this.manualParseEnterprises(content);
+          if (manualResults.length > 0) {
+            console.log('✅ Parsing manuel réussi');
+            return {
+              enterprises: manualResults,
+              total: manualResults.length,
+              success: true
+            };
+          }
+          
+          throw new Error(`Impossible de parser le JSON: ${error2}`);
+        }
+      }
+      
+      // Validate structure
+      if (!parsed || !Array.isArray(parsed.enterprises)) {
+        console.error('❌ Structure JSON invalide:', parsed);
+        return { enterprises: [], total: 0, success: false, error: 'Structure JSON invalide' };
+      }
+
+      // Clean and validate enterprises
+      const cleanedEnterprises = this.validateAndCleanEnterprises(parsed.enterprises);
+      
+      console.log(`✅ ${cleanedEnterprises.length} entreprises parsées avec succès`);
+      return {
+        enterprises: cleanedEnterprises,
+        total: cleanedEnterprises.length,
+        success: true
+      };
+      
+    } catch (error: any) {
+      console.error('❌ Erreur parsing finale:', error.message);
+      console.error('❌ Contenu brut:', response.choices[0]?.message?.content?.substring(0, 1000));
+      
+      return { 
+        enterprises: [], 
+        total: 0, 
+        success: false, 
+        error: `Erreur parsing: ${error.message}` 
+      };
+    }
+  }
+
+  private extractJsonFromContent(content: string): string {
+    // Remove any text before and after JSON
+    let jsonStr = content.trim();
+    
+    // Remove markdown code blocks
+    jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/\n?```$/g, '');
+    jsonStr = jsonStr.replace(/```\n?/g, '').replace(/\n?```$/g, '');
+    
+    // Find JSON boundaries
+    const jsonMatch = jsonStr.match(/\{[\s\S]*"enterprises"[\s\S]*\[[\s\S]*?\][\s\S]*?\}/);
+    if (jsonMatch) {
+      return jsonMatch[0];
     }
     
-  } catch (error) {
-    return null;
+    // Alternative: find by braces
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
+    
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      return jsonStr.substring(firstBrace, lastBrace + 1);
+    }
+    
+    return jsonStr;
   }
-}
+
+  private repairJsonString(jsonStr: string): string {
+    let repaired = jsonStr;
+    
+    // Remove trailing commas
+    repaired = repaired.replace(/,(\s*[}\]])/g, '$1');
+    
+    // Fix unescaped quotes in strings
+    repaired = repaired.replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":');
+    
+    // Normalize whitespace
+    repaired = repaired.replace(/\s+/g, ' ');
+    
+    // Fix missing commas between objects
+    repaired = repaired.replace(/}\s*{/g, '},{');
+    
+    // Fix missing commas between array elements
+    repaired = repaired.replace(/]\s*\[/g, '],[');
+    
+    // Ensure proper string quotes for values
+    repaired = repaired.replace(/:\s*([^",\[\]{}]+)(\s*[,}\]])/g, (match, value, suffix) => {
+      const trimmedValue = value.trim();
+      if (trimmedValue === 'true' || trimmedValue === 'false' || trimmedValue === 'null' || !isNaN(Number(trimmedValue))) {
+        return `: ${trimmedValue}${suffix}`;
+      }
+      return `: "${trimmedValue}"${suffix}`;
+    });
+    
+    return repaired;
+  }
+
+  private manualParseEnterprises(content: string): Enterprise[] {
+    const enterprises: Enterprise[] = [];
+    
+    // Enhanced regex patterns for enterprise parsing
+    const enterprisePatterns = [
+      // Complete enterprise object
+      /\{\s*"nom_entreprise"\s*:\s*"([^"]+)"[\s\S]*?"site_web"\s*:\s*"([^"]*)"[\s\S]*?"description_activite"\s*:\s*"([^"]+)"[\s\S]*?"produits_entreprise"\s*:\s*\[([^\]]*)\][\s\S]*?"potentiel_cgr"\s*:\s*\{[\s\S]*?"produits_cibles_chez_le_prospect"\s*:\s*\[([^\]]*)\][\s\S]*?"produits_cgr_a_proposer"\s*:\s*\[([^\]]*)\][\s\S]*?"argumentaire_approche"\s*:\s*"([^"]+)"[\s\S]*?\}[\s\S]*?"fournisseur_actuel_estimation"\s*:\s*"([^"]*)"[\s\S]*?"sources"\s*:\s*\[([^\]]*)\][\s\S]*?\}/g
+    ];
+    
+    for (const pattern of enterprisePatterns) {
+      let match;
+      while ((match = pattern.exec(content)) !== null && enterprises.length < 10) {
+        try {
+          const [, nom_entreprise, site_web, description_activite, produits_str, cibles_str, cgr_str, argumentaire, fournisseur, sources_str] = match;
+          
+          if (nom_entreprise && description_activite) {
+            enterprises.push({
+              nom_entreprise: nom_entreprise.trim(),
+              site_web: this.cleanWebsiteUrl(site_web || ''),
+              description_activite: description_activite.trim(),
+              produits_entreprise: this.parseArrayString(produits_str),
+              potentiel_cgr: {
+                produits_cibles_chez_le_prospect: this.parseArrayString(cibles_str),
+                produits_cgr_a_proposer: this.parseArrayString(cgr_str),
+                argumentaire_approche: argumentaire?.trim() || ''
+              },
+              fournisseur_actuel_estimation: fournisseur?.trim() || 'Non spécifié',
+              sources: this.parseArrayString(sources_str),
+              taille_entreprise: 'Non spécifié',
+              volume_pieces_estime: 'Non spécifié',
+              zone_geographique: 'Non spécifié'
+            });
+          }
+        } catch (error) {
+          console.error('❌ Erreur parsing manuel pour une entreprise:', error);
+        }
+      }
+    }
+    
+    return enterprises;
+  }
+
+  private parseArrayString(arrayStr: string): string[] {
+    if (!arrayStr || arrayStr.trim() === '') return [];
+    
+    return arrayStr
+      .split(',')
+      .map(item => item.trim().replace(/^["']|["']$/g, ''))
+      .filter(item => item.length > 0 && item !== 'null' && item !== 'undefined');
+  }
+
+  private validateAndCleanEnterprises(enterprises: any[]): Enterprise[] {
+    return enterprises
+      .filter(enterprise => {
+        // Basic validation
+        if (!enterprise || typeof enterprise !== 'object') return false;
+        if (!enterprise.nom_entreprise || typeof enterprise.nom_entreprise !== 'string') return false;
+        if (!enterprise.description_activite || typeof enterprise.description_activite !== 'string') return false;
+        if (!enterprise.potentiel_cgr || typeof enterprise.potentiel_cgr !== 'object') return false;
+        
+        return true;
+      })
+      .map(enterprise => ({
+        nom_entreprise: String(enterprise.nom_entreprise).trim(),
+        site_web: this.cleanWebsiteUrl(enterprise.site_web || ''),
+        description_activite: String(enterprise.description_activite).trim(),
+        produits_entreprise: Array.isArray(enterprise.produits_entreprise) 
+          ? enterprise.produits_entreprise.filter((p: any) => p && typeof p === 'string').map((p: any) => String(p).trim())
+          : [],
+        potentiel_cgr: {
+          produits_cibles_chez_le_prospect: Array.isArray(enterprise.potentiel_cgr?.produits_cibles_chez_le_prospect) 
+            ? enterprise.potentiel_cgr.produits_cibles_chez_le_prospect.filter((p: any) => p && typeof p === 'string').map((p: any) => String(p).trim())
+            : [],
+          produits_cgr_a_proposer: Array.isArray(enterprise.potentiel_cgr?.produits_cgr_a_proposer) 
+            ? enterprise.potentiel_cgr.produits_cgr_a_proposer.filter((p: any) => p && typeof p === 'string').map((p: any) => String(p).trim())
+            : [],
+          argumentaire_approche: String(enterprise.potentiel_cgr?.argumentaire_approche || '').trim()
+        },
+        fournisseur_actuel_estimation: String(enterprise.fournisseur_actuel_estimation || 'Non spécifié').trim(),
+        sources: Array.isArray(enterprise.sources) 
+          ? enterprise.sources.filter((s: any) => s && typeof s === 'string').map((s: any) => String(s).trim())
+          : [],
+        taille_entreprise: String(enterprise.taille_entreprise || 'Non spécifié').trim(),
+        volume_pieces_estime: String(enterprise.volume_pieces_estime || 'Non spécifié').trim(),
+        zone_geographique: String(enterprise.zone_geographique || 'Non spécifié').trim()
+      }))
+      .slice(0, 10); // Limit to max 10 enterprises
+  }
 
   private cleanWebsiteUrl(url: string): string {
     if (!url || url.trim() === '') return '';
