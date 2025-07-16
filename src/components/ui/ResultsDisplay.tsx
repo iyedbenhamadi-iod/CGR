@@ -1,4 +1,5 @@
 "use client"
+
 import {
   Building2,
   Users,
@@ -77,23 +78,13 @@ interface ResultsDisplayProps {
   prospects?: Prospect[]
   enterprises?: Prospect[] // Add this to handle the enterprises key
   marketOpportunities?: MarketOpportunity[]
-   competitorAnalysis?: {
-    nom_entreprise: string;
-    synthese: string;
-    produits_services: string[];
-    marches_cibles: string[];
-    forces_apparentes: string[];
-    faiblesses_potentielles: string[];
-    strategie_communication: string;
-    sources: string[];
-  };
+  competitorAnalysis?: CompetitorAnalysis // Use the defined interface
   contacts?: Contact[]
   totalFound: number
   cached: boolean
   sources: string[]
   searchId?: string
 }
-
 
 function isValidUrl(url: string): boolean {
   if (!url || typeof url !== "string" || url.trim() === "") {
@@ -120,7 +111,6 @@ function getHostname(url: string): string {
 
 function ContactCard({ contact }: { contact: Contact }) {
   const emailLocked = !contact.email || contact.email.includes("email_not_unlocked")
-
   return (
     <Card className="bg-gray-50">
       <CardContent className="p-4">
@@ -139,7 +129,6 @@ function ContactCard({ contact }: { contact: Contact }) {
             )}
           </div>
         </div>
-
         <div className="space-y-2">
           {/* Email */}
           <div className="flex items-center gap-2">
@@ -152,7 +141,6 @@ function ContactCard({ contact }: { contact: Contact }) {
               <span className="text-sm text-blue-600">{contact.email}</span>
             )}
           </div>
-
           {/* Téléphone */}
           {contact.phone && (
             <div className="flex items-center gap-2">
@@ -160,7 +148,6 @@ function ContactCard({ contact }: { contact: Contact }) {
               <span className="text-sm text-gray-700">{contact.phone}</span>
             </div>
           )}
-
           {/* LinkedIn */}
           {contact.linkedin_url && (
             <div className="flex items-center gap-2">
@@ -171,7 +158,6 @@ function ContactCard({ contact }: { contact: Contact }) {
               </Button>
             </div>
           )}
-
           {/* Accroche personnalisée */}
           {contact.accroche_personnalisee && (
             <div className="mt-3 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400">
@@ -217,7 +203,6 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
           )}
         </div>
       </CardHeader>
-
       <CardContent className="space-y-4">
         {/* Informations générales */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -234,7 +219,6 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
             <span className="text-gray-600">Zone: {prospect.zone_geographique || "Non spécifiée"}</span>
           </div>
         </div>
-
         {/* Produits de l'entreprise */}
         {prospect.produits_entreprise && prospect.produits_entreprise.length > 0 && (
           <div>
@@ -256,7 +240,6 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
             </div>
           </div>
         )}
-
         {/* Potentiel CGR */}
         {prospect.potentiel_cgr && (
           <Card className="bg-green-50 border-green-200">
@@ -265,7 +248,6 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
                 <Target className="w-4 h-4" />
                 Potentiel pour CGR
               </h5>
-
               {prospect.potentiel_cgr.produits_cibles_chez_le_prospect?.length > 0 && (
                 <div className="mb-3">
                   <p className="text-sm font-medium text-green-700 mb-1">Produits cibles :</p>
@@ -278,7 +260,6 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
                   </div>
                 </div>
               )}
-
               {prospect.potentiel_cgr.produits_cgr_a_proposer?.length > 0 && (
                 <div className="mb-3">
                   <p className="text-sm font-medium text-green-700 mb-1">Produits CGR recommandés :</p>
@@ -291,7 +272,6 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
                   </div>
                 </div>
               )}
-
               {prospect.potentiel_cgr.argumentaire_approche && (
                 <div className="bg-white rounded-lg p-3 border border-green-200">
                   <p className="text-sm text-green-800">
@@ -303,7 +283,6 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
             </CardContent>
           </Card>
         )}
-
         {/* Fournisseur actuel */}
         {prospect.fournisseur_actuel_estimation && prospect.fournisseur_actuel_estimation !== "Non spécifié" && (
           <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -314,7 +293,6 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
             </span>
           </div>
         )}
-
         {/* Contacts */}
         {prospect.contacts && prospect.contacts.length > 0 && (
           <div>
@@ -329,7 +307,6 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
             </div>
           </div>
         )}
-
         {/* Sources */}
         {prospect.sources && prospect.sources.length > 0 && (
           <div className="pt-3 border-t border-gray-100">
@@ -365,32 +342,34 @@ export default function ResultsDisplay({
 }: ResultsDisplayProps) {
   // Use enterprises if prospects is not provided (for backward compatibility)
   const displayProspects = prospects || enterprises || []
-  
+
   // Enhanced debug logs
-  console.log('ResultsDisplay received:', {
+  console.log("ResultsDisplay: Props received:", {
     searchType,
-    prospects: prospects?.length || 0,
-    enterprises: enterprises?.length || 0,
-    displayProspects: displayProspects.length,
-    marketOpportunities: marketOpportunities?.length || 0,
-    competitorAnalysis: !!competitorAnalysis,
-    competitorAnalysisData: competitorAnalysis ? {
-      nom_entreprise: competitorAnalysis.nom_entreprise,
-      synthese: !!competitorAnalysis.synthese,
-      produits_services: competitorAnalysis.produits_services?.length || 0,
-      marches_cibles: competitorAnalysis.marches_cibles?.length || 0,
-      forces_apparentes: competitorAnalysis.forces_apparentes?.length || 0,
-      faiblesses_potentielles: competitorAnalysis.faiblesses_potentielles?.length || 0,
-      strategie_communication: !!competitorAnalysis.strategie_communication,
-      sources: competitorAnalysis.sources?.length || 0
-    } : null,
-    contacts: contacts?.length || 0,
     totalFound,
     cached,
-    sourcesCount: sources?.length || 0
-  });
+    sourcesCount: sources?.length || 0,
+    prospectsCount: prospects?.length || 0,
+    enterprisesCount: enterprises?.length || 0,
+    displayProspectsCount: displayProspects.length,
+    marketOpportunitiesCount: marketOpportunities?.length || 0,
+    competitorAnalysis: competitorAnalysis
+      ? {
+          nom_entreprise: competitorAnalysis.nom_entreprise,
+          synthese: !!competitorAnalysis.synthese,
+          produits_services: competitorAnalysis.produits_services?.length || 0,
+          marches_cibles: competitorAnalysis.marches_cibles?.length || 0,
+          forces_apparentes: competitorAnalysis.forces_apparentes?.length || 0,
+          faiblesses_potentielles: competitorAnalysis.faiblesses_potentielles?.length || 0,
+          strategie_communication: !!competitorAnalysis.strategie_communication,
+          sources: competitorAnalysis.sources?.length || 0,
+        }
+      : null,
+    contactsCount: contacts?.length || 0,
+  })
 
   if (totalFound === 0) {
+    console.log('ResultsDisplay: totalFound is 0, displaying "No results found" message.')
     return (
       <Card className="border-yellow-200 bg-yellow-50">
         <CardContent className="p-6 text-center">
@@ -430,9 +409,7 @@ export default function ResultsDisplay({
             <div className="text-right">
               <p className="text-sm text-green-600">Type: {searchType}</p>
               {searchType === "concurrent" && competitorAnalysis && (
-                <p className="text-xs text-green-500">
-                  Analyse de {competitorAnalysis.nom_entreprise}
-                </p>
+                <p className="text-xs text-green-500">Analyse de {competitorAnalysis.nom_entreprise}</p>
               )}
               {searchType === "entreprises" && (
                 <p className="text-xs text-green-500">
@@ -445,32 +422,32 @@ export default function ResultsDisplay({
       </Card>
 
       {/* Debug info in development */}
-      {process.env.NODE_ENV === 'development' && (
+      {process.env.NODE_ENV === "development" && (
         <Card className="border-gray-200 bg-gray-50">
           <CardContent className="p-4">
-            <h4 className="font-medium text-gray-800 mb-2">Debug Info</h4>
+            <h4 className="font-medium text-gray-800 mb-2">Debug Info (ResultsDisplay)</h4>
             <div className="text-xs text-gray-600 space-y-1">
               <p>Search Type: {searchType}</p>
               <p>Total Found: {totalFound}</p>
-              <p>Prospects: {prospects?.length || 0}</p>
-              <p>Enterprises: {enterprises?.length || 0}</p>
-              <p>Display Prospects: {displayProspects.length}</p>
+              <p>Prospects (from prop): {prospects?.length || 0}</p>
+              <p>Enterprises (from prop): {enterprises?.length || 0}</p>
+              <p>Display Prospects (internal): {displayProspects.length}</p>
               <p>Market Opportunities: {marketOpportunities?.length || 0}</p>
-              <p>Competitor Analysis: {competitorAnalysis ? 'Yes' : 'No'}</p>
+              <p>Competitor Analysis: {competitorAnalysis ? "Yes" : "No"}</p>
               {competitorAnalysis && (
                 <div className="ml-4 space-y-1">
                   <p>- Nom: {competitorAnalysis.nom_entreprise}</p>
-                  <p>- Synthèse: {competitorAnalysis.synthese ? 'Yes' : 'No'}</p>
+                  <p>- Synthèse: {competitorAnalysis.synthese ? "Yes" : "No"}</p>
                   <p>- Produits/Services: {competitorAnalysis.produits_services?.length || 0}</p>
                   <p>- Marchés: {competitorAnalysis.marches_cibles?.length || 0}</p>
                   <p>- Forces: {competitorAnalysis.forces_apparentes?.length || 0}</p>
                   <p>- Faiblesses: {competitorAnalysis.faiblesses_potentielles?.length || 0}</p>
-                  <p>- Communication: {competitorAnalysis.strategie_communication ? 'Yes' : 'No'}</p>
+                  <p>- Communication: {competitorAnalysis.strategie_communication ? "Yes" : "No"}</p>
                   <p>- Sources: {competitorAnalysis.sources?.length || 0}</p>
                 </div>
               )}
               <p>Contacts: {contacts?.length || 0}</p>
-              <p>Sources: {sources?.length || 0}</p>
+              <p>Sources (global): {sources?.length || 0}</p>
             </div>
           </CardContent>
         </Card>
@@ -493,7 +470,6 @@ export default function ResultsDisplay({
                   <h5 className="font-medium text-gray-800 mb-2">Justification</h5>
                   <p className="text-gray-700 text-sm">{opportunity.justification}</p>
                 </div>
-
                 <div>
                   <h5 className="font-medium text-gray-800 mb-2">Produits CGR applicables</h5>
                   <div className="flex flex-wrap gap-1">
@@ -504,7 +480,6 @@ export default function ResultsDisplay({
                     ))}
                   </div>
                 </div>
-
                 <div>
                   <h5 className="font-medium text-gray-800 mb-2">Entreprises leaders</h5>
                   <div className="flex flex-wrap gap-1">
@@ -538,11 +513,9 @@ export default function ResultsDisplay({
                 <p className="text-gray-700 text-sm">{competitorAnalysis.synthese}</p>
               </div>
             )}
-
             {(competitorAnalysis.produits_services?.length > 0 || competitorAnalysis.marches_cibles?.length > 0) && (
               <Separator />
             )}
-
             <div className="grid md:grid-cols-2 gap-6">
               {/* Produits & Services */}
               {competitorAnalysis.produits_services && competitorAnalysis.produits_services.length > 0 && (
@@ -560,7 +533,6 @@ export default function ResultsDisplay({
                   </div>
                 </div>
               )}
-
               {/* Marchés Cibles */}
               {competitorAnalysis.marches_cibles && competitorAnalysis.marches_cibles.length > 0 && (
                 <div>
@@ -578,11 +550,8 @@ export default function ResultsDisplay({
                 </div>
               )}
             </div>
-
-            {(competitorAnalysis.forces_apparentes?.length > 0 || competitorAnalysis.faiblesses_potentielles?.length > 0) && (
-              <Separator />
-            )}
-
+            {(competitorAnalysis.forces_apparentes?.length > 0 ||
+              competitorAnalysis.faiblesses_potentielles?.length > 0) && <Separator />}
             <div className="grid md:grid-cols-2 gap-6">
               {/* Forces apparentes */}
               {competitorAnalysis.forces_apparentes && competitorAnalysis.forces_apparentes.length > 0 && (
@@ -601,7 +570,6 @@ export default function ResultsDisplay({
                   </ul>
                 </div>
               )}
-
               {/* Faiblesses potentielles */}
               {competitorAnalysis.faiblesses_potentielles && competitorAnalysis.faiblesses_potentielles.length > 0 && (
                 <div>
@@ -620,7 +588,6 @@ export default function ResultsDisplay({
                 </div>
               )}
             </div>
-
             {/* Stratégie de communication */}
             {competitorAnalysis.strategie_communication && (
               <>
@@ -631,26 +598,24 @@ export default function ResultsDisplay({
                 </div>
               </>
             )}
-
             {/* Show message if no detailed analysis is available */}
-            {!competitorAnalysis.synthese && 
-             !competitorAnalysis.produits_services?.length && 
-             !competitorAnalysis.marches_cibles?.length && 
-             !competitorAnalysis.forces_apparentes?.length && 
-             !competitorAnalysis.faiblesses_potentielles?.length && 
-             !competitorAnalysis.strategie_communication && (
-              <div className="text-center py-8">
-                <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
-                <p className="text-yellow-800 font-medium">Analyse limitée disponible</p>
-                <p className="text-yellow-600 text-sm mt-1">
-                  L'analyse du concurrent "{competitorAnalysis.nom_entreprise}" n'a pas retourné de détails complets.
-                </p>
-              </div>
-            )}
+            {!competitorAnalysis.synthese &&
+              !competitorAnalysis.produits_services?.length &&
+              !competitorAnalysis.marches_cibles?.length &&
+              !competitorAnalysis.forces_apparentes?.length &&
+              !competitorAnalysis.faiblesses_potentielles?.length &&
+              !competitorAnalysis.strategie_communication && (
+                <div className="text-center py-8">
+                  <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
+                  <p className="text-yellow-800 font-medium">Analyse limitée disponible</p>
+                  <p className="text-yellow-600 text-sm mt-1">
+                    L'analyse du concurrent "{competitorAnalysis.nom_entreprise}" n'a pas retourné de détails complets.
+                  </p>
+                </div>
+              )}
           </CardContent>
         </Card>
       )}
-
       {/* No competitor analysis found */}
       {searchType === "concurrent" && !competitorAnalysis && (
         <Card className="border-orange-200 bg-orange-50">
@@ -695,9 +660,7 @@ export default function ResultsDisplay({
         <div className="grid gap-4">
           {contacts && contacts.length > 0 ? (
             <>
-              <h3 className="text-lg font-semibold text-gray-800">
-                Contacts identifiés ({contacts.length})
-              </h3>
+              <h3 className="text-lg font-semibold text-gray-800">Contacts identifiés ({contacts.length})</h3>
               {contacts.map((contact, index) => (
                 <ContactCard key={index} contact={contact} />
               ))}

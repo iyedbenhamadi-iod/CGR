@@ -70,7 +70,7 @@ export class PerplexityEnterpriseClient {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
           },
-          timeout: 60000
+          timeout: 600000
         }
       );
       
