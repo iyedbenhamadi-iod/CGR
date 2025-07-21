@@ -1,5 +1,4 @@
 "use client"
-
 import {
   Building2,
   Users,
@@ -16,6 +15,7 @@ import {
   Lightbulb,
   Package,
   Award,
+  Info,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -29,11 +29,16 @@ interface Contact {
   email?: string
   phone?: string
   linkedin_url?: string
-  accroche_personnalisee?: {
-    texte: string
-    source_accroche: string
-  }
+  accroche_personnalisee?:
+    | {
+        texte: string
+        source_accroche: string
+      }
+    | string
   verified?: boolean
+  entreprise?: string
+  secteur?: string
+  sources?: string[]
 }
 
 interface Prospect {
@@ -103,7 +108,8 @@ function getHostname(url: string): string {
     return "Source invalide"
   }
   try {
-    return new URL(url).hostname
+    const hostname = new URL(url).hostname
+    return hostname.startsWith("www.") ? hostname.substring(4) : hostname
   } catch (error) {
     return "Source invalide"
   }
@@ -111,63 +117,84 @@ function getHostname(url: string): string {
 
 function ContactCard({ contact }: { contact: Contact }) {
   const emailLocked = !contact.email || contact.email.includes("email_not_unlocked")
+
   return (
-    <Card className="bg-gray-50">
-      <CardContent className="p-4">
+    <Card className="bg-background border border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
+      <CardContent className="p-6 space-y-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
-            <h5 className="font-semibold text-gray-900">
+            <h5 className="font-bold text-lg text-foreground">
               {contact.prenom} {contact.nom}
             </h5>
-            <p className="text-sm text-gray-600 mb-2">{contact.poste}</p>
+            <p className="text-sm text-muted-foreground mt-1">{contact.poste}</p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             {contact.verified ? (
-              <CheckCircle className="text-green-500" size={16} />
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                <CheckCircle className="mr-1" size={14} /> Vérifié
+              </Badge>
             ) : (
-              <AlertCircle className="text-yellow-500" size={16} />
+              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                <AlertCircle className="mr-1" size={14} /> Non vérifié
+              </Badge>
             )}
           </div>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-3">
           {/* Email */}
-          <div className="flex items-center gap-2">
-            <Mail className="text-gray-400" size={14} />
+          <div className="flex items-center gap-3">
+            <Mail className="text-primary" size={18} />
             {emailLocked ? (
-              <Badge variant="outline" className="text-orange-600">
-                Email disponible après déverrouillage
-              </Badge>
+              <span className="text-sm text-muted-foreground italic">Email disponible après déverrouillage</span>
             ) : (
-              <span className="text-sm text-blue-600">{contact.email}</span>
+              <a href={`mailto:${contact.email}`} className="text-sm text-primary hover:underline">
+                {contact.email}
+              </a>
             )}
           </div>
           {/* Téléphone */}
           {contact.phone && (
-            <div className="flex items-center gap-2">
-              <Phone className="text-gray-400" size={14} />
-              <span className="text-sm text-gray-700">{contact.phone}</span>
+            <div className="flex items-center gap-3">
+              <Phone className="text-primary" size={18} />
+              <span className="text-sm text-foreground">{contact.phone}</span>
             </div>
           )}
           {/* LinkedIn */}
           {contact.linkedin_url && (
-            <div className="flex items-center gap-2">
-              <Linkedin className="text-gray-400" size={14} />
-              <Button variant="link" size="sm" className="h-auto p-0 text-sm">
-                <ExternalLink className="w-3 h-3 mr-1" />
-                Profil LinkedIn
-              </Button>
+            <div className="flex items-center gap-3">
+              <Linkedin className="text-primary" size={18} />
+              <a
+                href={contact.linkedin_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center text-sm text-primary hover:underline"
+              >
+                Profil LinkedIn <ExternalLink className="w-3 h-3 ml-1" />
+              </a>
             </div>
           )}
           {/* Accroche personnalisée */}
           {contact.accroche_personnalisee && (
-            <div className="mt-3 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400">
-              <p className="text-sm text-blue-800 font-medium mb-1">Accroche suggérée :</p>
-              <p className="text-sm text-blue-700 italic">"{contact.accroche_personnalisee.texte}"</p>
-              {contact.accroche_personnalisee.source_accroche && (
-                <Button variant="link" size="sm" className="h-auto p-0 text-xs mt-1">
-                  <ExternalLink className="w-3 h-3 mr-1" />
-                  Source
-                </Button>
+            <div className="mt-4 p-4 bg-accent/10 rounded-lg border-l-4 border-accent space-y-2">
+              <p className="text-sm text-accent-foreground font-semibold">Accroche suggérée :</p>
+              {typeof contact.accroche_personnalisee === "object" && contact.accroche_personnalisee.texte ? (
+                <>
+                  <p className="text-base text-foreground italic">"{contact.accroche_personnalisee.texte}"</p>
+                  {contact.accroche_personnalisee.source_accroche && (
+                    <a
+                      href={contact.accroche_personnalisee.source_accroche}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center text-xs text-primary hover:underline mt-1"
+                    >
+                      Source <ExternalLink className="w-3 h-3 ml-1" />
+                    </a>
+                  )}
+                </>
+              ) : typeof contact.accroche_personnalisee === "string" && contact.accroche_personnalisee.trim() ? (
+                <p className="text-base text-foreground italic">"{contact.accroche_personnalisee}"</p>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">Accroche en cours de génération...</p>
               )}
             </div>
           )}
@@ -179,81 +206,85 @@ function ContactCard({ contact }: { contact: Contact }) {
 
 function ProspectCard({ prospect }: { prospect: Prospect }) {
   return (
-    <Card className="hover:shadow-lg transition-shadow">
-      <CardHeader>
+    <Card className="bg-card border border-border/50 shadow-md hover:shadow-lg transition-shadow duration-200">
+      <CardHeader className="pb-4">
         <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <Building2 className="text-blue-600 flex-shrink-0" size={24} />
+          <div className="flex items-center gap-4">
+            <Building2 className="text-primary flex-shrink-0 w-8 h-8" />
             <div>
-              <CardTitle className="text-lg">{prospect.nom_entreprise}</CardTitle>
-              <CardDescription>{prospect.description_activite}</CardDescription>
+              <CardTitle className="text-2xl font-bold text-foreground">{prospect.nom_entreprise}</CardTitle>
+              <CardDescription className="text-muted-foreground mt-1">{prospect.description_activite}</CardDescription>
               {prospect.site_web && isValidUrl(prospect.site_web) && (
-                <Button variant="link" size="sm" className="h-auto p-0 text-sm mt-1">
-                  <ExternalLink className="w-3 h-3 mr-1" />
-                  Site web
+                <Button variant="link" size="sm" className="h-auto p-0 text-sm mt-2 text-primary hover:underline">
+                  <ExternalLink className="w-4 h-4 mr-1" />
+                  Visiter le site web
                 </Button>
               )}
             </div>
           </div>
           {prospect.score && (
-            <Badge variant="secondary" className="flex items-center gap-1">
-              <Star className="w-3 h-3" />
+            <Badge className="flex items-center gap-1 bg-accent text-accent-foreground text-base px-3 py-1.5 rounded-full">
+              <Star className="w-4 h-4" />
               {prospect.score}/10
             </Badge>
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6 pt-4">
         {/* Informations générales */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-base text-muted-foreground">
           <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-600">Taille: {prospect.taille_entreprise || "Non spécifiée"}</span>
+            <Users className="w-5 h-5 text-primary/70" />
+            <span>Taille: {prospect.taille_entreprise || "Non spécifiée"}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Package className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-600">Volume: {prospect.volume_pieces_estime || "Non spécifié"}</span>
+            <Package className="w-5 h-5 text-primary/70" />
+            <span>Volume: {prospect.volume_pieces_estime || "Non spécifié"}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Target className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-600">Zone: {prospect.zone_geographique || "Non spécifiée"}</span>
+            <Target className="w-5 h-5 text-primary/70" />
+            <span>Zone: {prospect.zone_geographique || "Non spécifiée"}</span>
           </div>
         </div>
+
+        <Separator className="bg-border/50" />
+
         {/* Produits de l'entreprise */}
         {prospect.produits_entreprise && prospect.produits_entreprise.length > 0 && (
           <div>
-            <h5 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-              <Package className="w-4 h-4" />
-              Produits développés
+            <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+              <Package className="w-5 h-5 text-primary" />
+              Produits développés par l'entreprise
             </h5>
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-2">
               {prospect.produits_entreprise.slice(0, 5).map((produit, idx) => (
-                <Badge key={idx} variant="outline" className="text-xs">
+                <Badge key={idx} variant="outline" className="text-sm px-3 py-1 bg-secondary text-secondary-foreground">
                   {produit}
                 </Badge>
               ))}
               {prospect.produits_entreprise.length > 5 && (
-                <Badge variant="outline" className="text-xs">
+                <Badge variant="outline" className="text-sm px-3 py-1 bg-secondary text-secondary-foreground">
                   +{prospect.produits_entreprise.length - 5} autres
                 </Badge>
               )}
             </div>
           </div>
         )}
+
         {/* Potentiel CGR */}
         {prospect.potentiel_cgr && (
-          <Card className="bg-green-50 border-green-200">
-            <CardContent className="p-4">
-              <h5 className="font-medium text-green-800 mb-2 flex items-center gap-2">
-                <Target className="w-4 h-4" />
-                Potentiel pour CGR
+          <Card className="bg-primary/5 border border-primary/20 shadow-inner">
+            <CardContent className="p-6 space-y-4">
+              <h5 className="font-bold text-xl text-primary mb-3 flex items-center gap-3">
+                <TrendingUp className="w-6 h-6" />
+                Potentiel Stratégique pour CGR
               </h5>
               {prospect.potentiel_cgr.produits_cibles_chez_le_prospect?.length > 0 && (
-                <div className="mb-3">
-                  <p className="text-sm font-medium text-green-700 mb-1">Produits cibles :</p>
-                  <div className="flex flex-wrap gap-1">
+                <div>
+                  <p className="text-base font-medium text-foreground mb-2">Produits cibles chez le prospect :</p>
+                  <div className="flex flex-wrap gap-2">
                     {prospect.potentiel_cgr.produits_cibles_chez_le_prospect.map((produit, idx) => (
-                      <Badge key={idx} variant="secondary" className="text-xs bg-green-100">
+                      <Badge key={idx} className="text-sm bg-accent/20 text-accent-foreground px-3 py-1">
                         {produit}
                       </Badge>
                     ))}
@@ -261,11 +292,11 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
                 </div>
               )}
               {prospect.potentiel_cgr.produits_cgr_a_proposer?.length > 0 && (
-                <div className="mb-3">
-                  <p className="text-sm font-medium text-green-700 mb-1">Produits CGR recommandés :</p>
-                  <div className="flex flex-wrap gap-1">
+                <div>
+                  <p className="text-base font-medium text-foreground mb-2">Produits CGR recommandés :</p>
+                  <div className="flex flex-wrap gap-2">
                     {prospect.potentiel_cgr.produits_cgr_a_proposer.map((produit, idx) => (
-                      <Badge key={idx} className="text-xs bg-green-600">
+                      <Badge key={idx} className="text-sm bg-primary text-primary-foreground px-3 py-1">
                         {produit}
                       </Badge>
                     ))}
@@ -273,9 +304,9 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
                 </div>
               )}
               {prospect.potentiel_cgr.argumentaire_approche && (
-                <div className="bg-white rounded-lg p-3 border border-green-200">
-                  <p className="text-sm text-green-800">
-                    <span className="font-medium">Argumentaire : </span>
+                <div className="bg-background rounded-lg p-4 border border-border/50">
+                  <p className="text-base text-foreground">
+                    <span className="font-semibold text-primary">Argumentaire d'approche : </span>
                     {prospect.potentiel_cgr.argumentaire_approche}
                   </p>
                 </div>
@@ -283,44 +314,57 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
             </CardContent>
           </Card>
         )}
+
         {/* Fournisseur actuel */}
         {prospect.fournisseur_actuel_estimation && prospect.fournisseur_actuel_estimation !== "Non spécifié" && (
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Shield className="w-4 h-4" />
+          <div className="flex items-center gap-3 text-base text-muted-foreground">
+            <Shield className="w-5 h-5 text-primary/70" />
             <span>
-              <span className="font-medium">Concurrents potentiels : </span>
+              <span className="font-medium text-foreground">Concurrents potentiels : </span>
               {prospect.fournisseur_actuel_estimation}
             </span>
           </div>
         )}
+
         {/* Contacts */}
         {prospect.contacts && prospect.contacts.length > 0 && (
           <div>
-            <h5 className="font-medium text-gray-800 mb-3 flex items-center gap-2">
-              <Users className="w-4 h-4" />
+            <h5 className="font-semibold text-lg text-foreground mb-4 flex items-center gap-2">
+              <Users className="w-5 h-5 text-primary" />
               Contacts identifiés ({prospect.contacts.length})
             </h5>
-            <div className="grid gap-3">
+            <div className="grid gap-4">
               {prospect.contacts.map((contact, contactIndex) => (
                 <ContactCard key={contactIndex} contact={contact} />
               ))}
             </div>
           </div>
         )}
+
         {/* Sources */}
         {prospect.sources && prospect.sources.length > 0 && (
-          <div className="pt-3 border-t border-gray-100">
+          <div className="pt-4 border-t border-border/50">
             <div className="flex flex-wrap gap-2">
-              <span className="text-xs text-gray-500">Sources :</span>
+              <span className="text-sm text-muted-foreground font-medium">Sources :</span>
               {prospect.sources
                 .filter((source) => isValidUrl(source))
                 .slice(0, 3)
                 .map((source, idx) => (
-                  <Button key={idx} variant="outline" size="sm" className="h-6 text-xs bg-transparent">
+                  <Button
+                    key={idx}
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs bg-background text-primary hover:bg-primary/5 hover:text-primary border-primary/20"
+                  >
                     <ExternalLink className="w-3 h-3 mr-1" />
                     {getHostname(source)}
                   </Button>
                 ))}
+              {prospect.sources.length > 3 && (
+                <Badge variant="outline" className="text-xs bg-background text-muted-foreground">
+                  +{prospect.sources.length - 3} autres
+                </Badge>
+              )}
             </div>
           </div>
         )}
@@ -340,80 +384,56 @@ export default function ResultsDisplay({
   cached,
   sources,
 }: ResultsDisplayProps) {
-  // Use enterprises if prospects is not provided (for backward compatibility)
   const displayProspects = prospects || enterprises || []
 
-  // Enhanced debug logs
-  console.log("ResultsDisplay: Props received:", {
-    searchType,
-    totalFound,
-    cached,
-    sourcesCount: sources?.length || 0,
-    prospectsCount: prospects?.length || 0,
-    enterprisesCount: enterprises?.length || 0,
-    displayProspectsCount: displayProspects.length,
-    marketOpportunitiesCount: marketOpportunities?.length || 0,
-    competitorAnalysis: competitorAnalysis
-      ? {
-          nom_entreprise: competitorAnalysis.nom_entreprise,
-          synthese: !!competitorAnalysis.synthese,
-          produits_services: competitorAnalysis.produits_services?.length || 0,
-          marches_cibles: competitorAnalysis.marches_cibles?.length || 0,
-          forces_apparentes: competitorAnalysis.forces_apparentes?.length || 0,
-          faiblesses_potentielles: competitorAnalysis.faiblesses_potentielles?.length || 0,
-          strategie_communication: !!competitorAnalysis.strategie_communication,
-          sources: competitorAnalysis.sources?.length || 0,
-        }
-      : null,
-    contactsCount: contacts?.length || 0,
-  })
-
   if (totalFound === 0) {
-    console.log('ResultsDisplay: totalFound is 0, displaying "No results found" message.')
     return (
-      <Card className="border-yellow-200 bg-yellow-50">
-        <CardContent className="p-6 text-center">
-          <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
-          <p className="text-yellow-800 font-medium">Aucun résultat trouvé</p>
-          <p className="text-yellow-600 text-sm mt-1">Essayez de modifier vos critères de recherche</p>
+      <Card className="border-yellow-400 bg-yellow-50 shadow-lg rounded-xl">
+        <CardContent className="p-8 text-center">
+          <AlertCircle className="w-16 h-16 text-yellow-600 mx-auto mb-6" />
+          <p className="text-yellow-800 font-bold text-xl">Aucun résultat trouvé</p>
+          <p className="text-yellow-700 text-base mt-2">Veuillez ajuster vos critères de recherche et réessayer.</p>
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 w-full max-w-5xl mx-auto">
       {/* Header résultats */}
-      <Card className="border-green-200 bg-green-50">
-        <CardContent className="p-4">
+      <Card className="bg-gradient-to-r from-primary/10 to-background border border-primary/20 shadow-md rounded-xl">
+        <CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-semibold text-green-800 flex items-center gap-2">
-                <Target className="w-5 h-5" />
-                {totalFound} résultat{totalFound > 1 ? "s" : ""} trouvé{totalFound > 1 ? "s" : ""}
+              <h3 className="font-bold text-2xl text-primary flex items-center gap-3">
+                <Target className="w-6 h-6" />
+                {totalFound} Résultat{totalFound > 1 ? "s" : ""} Trouvé{totalFound > 1 ? "s" : ""}
               </h3>
-              <p className="text-sm text-green-600 mt-1">
+              <p className="text-base text-muted-foreground mt-2 flex items-center gap-2">
                 {cached ? (
-                  <span className="flex items-center gap-1">
-                    <CheckCircle className="w-4 h-4" />
+                  <>
+                    <CheckCircle className="w-5 h-5 text-green-600" />
                     Résultats du cache (instantané)
-                  </span>
+                  </>
                 ) : (
-                  <span className="flex items-center gap-1">
-                    <TrendingUp className="w-4 h-4" />
+                  <>
+                    <TrendingUp className="w-5 h-5 text-accent" />
                     Nouvelle recherche IA
-                  </span>
+                  </>
                 )}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-sm text-green-600">Type: {searchType}</p>
+              <p className="text-lg font-semibold text-foreground">Type de recherche: {searchType}</p>
               {searchType === "concurrent" && competitorAnalysis && (
-                <p className="text-xs text-green-500">Analyse de {competitorAnalysis.nom_entreprise}</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Analyse de: <span className="font-medium">{competitorAnalysis.nom_entreprise}</span>
+                </p>
               )}
               {searchType === "entreprises" && (
-                <p className="text-xs text-green-500">
-                  {displayProspects.length} entreprise{displayProspects.length > 1 ? "s" : ""}
+                <p className="text-sm text-muted-foreground mt-1">
+                  <span className="font-medium">{displayProspects.length}</span> entreprise
+                  {displayProspects.length > 1 ? "s" : ""}
                 </p>
               )}
             </div>
@@ -421,128 +441,107 @@ export default function ResultsDisplay({
         </CardContent>
       </Card>
 
-      {/* Debug info in development */}
-      {process.env.NODE_ENV === "development" && (
-        <Card className="border-gray-200 bg-gray-50">
-          <CardContent className="p-4">
-            <h4 className="font-medium text-gray-800 mb-2">Debug Info (ResultsDisplay)</h4>
-            <div className="text-xs text-gray-600 space-y-1">
-              <p>Search Type: {searchType}</p>
-              <p>Total Found: {totalFound}</p>
-              <p>Prospects (from prop): {prospects?.length || 0}</p>
-              <p>Enterprises (from prop): {enterprises?.length || 0}</p>
-              <p>Display Prospects (internal): {displayProspects.length}</p>
-              <p>Market Opportunities: {marketOpportunities?.length || 0}</p>
-              <p>Competitor Analysis: {competitorAnalysis ? "Yes" : "No"}</p>
-              {competitorAnalysis && (
-                <div className="ml-4 space-y-1">
-                  <p>- Nom: {competitorAnalysis.nom_entreprise}</p>
-                  <p>- Synthèse: {competitorAnalysis.synthese ? "Yes" : "No"}</p>
-                  <p>- Produits/Services: {competitorAnalysis.produits_services?.length || 0}</p>
-                  <p>- Marchés: {competitorAnalysis.marches_cibles?.length || 0}</p>
-                  <p>- Forces: {competitorAnalysis.forces_apparentes?.length || 0}</p>
-                  <p>- Faiblesses: {competitorAnalysis.faiblesses_potentielles?.length || 0}</p>
-                  <p>- Communication: {competitorAnalysis.strategie_communication ? "Yes" : "No"}</p>
-                  <p>- Sources: {competitorAnalysis.sources?.length || 0}</p>
-                </div>
-              )}
-              <p>Contacts: {contacts?.length || 0}</p>
-              <p>Sources (global): {sources?.length || 0}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Affichage selon le type de recherche */}
       {searchType === "brainstorming" && marketOpportunities && marketOpportunities.length > 0 && (
-        <div className="grid gap-6">
-          <h3 className="text-lg font-semibold text-gray-800">Opportunités de marché identifiées</h3>
-          {marketOpportunities.map((opportunity, index) => (
-            <Card key={index} className="hover:shadow-md transition-shadow">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Lightbulb className="w-5 h-5 text-yellow-600" />
-                  {opportunity.nom_marche}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <h5 className="font-medium text-gray-800 mb-2">Justification</h5>
-                  <p className="text-gray-700 text-sm">{opportunity.justification}</p>
-                </div>
-                <div>
-                  <h5 className="font-medium text-gray-800 mb-2">Produits CGR applicables</h5>
-                  <div className="flex flex-wrap gap-1">
-                    {opportunity.produits_cgr_applicables.map((produit, idx) => (
-                      <Badge key={idx} className="text-xs">
-                        {produit}
-                      </Badge>
-                    ))}
+        <div className="space-y-6">
+          <h3 className="text-2xl font-bold text-foreground">Opportunités de marché identifiées</h3>
+          <div className="grid gap-6">
+            {marketOpportunities.map((opportunity, index) => (
+              <Card
+                key={index}
+                className="bg-card border border-border/50 shadow-md hover:shadow-lg transition-shadow duration-200"
+              >
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-3 text-xl font-bold text-primary">
+                    <Lightbulb className="w-6 h-6" />
+                    {opportunity.nom_marche}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5 pt-4">
+                  <div>
+                    <h5 className="font-semibold text-lg text-foreground mb-2">Justification</h5>
+                    <p className="text-muted-foreground text-base">{opportunity.justification}</p>
                   </div>
-                </div>
-                <div>
-                  <h5 className="font-medium text-gray-800 mb-2">Entreprises leaders</h5>
-                  <div className="flex flex-wrap gap-1">
-                    {opportunity.exemples_entreprises.map((entreprise, idx) => (
-                      <Badge key={idx} variant="outline" className="text-xs">
-                        {entreprise}
-                      </Badge>
-                    ))}
+                  <div>
+                    <h5 className="font-semibold text-lg text-foreground mb-2">Produits CGR applicables</h5>
+                    <div className="flex flex-wrap gap-2">
+                      {opportunity.produits_cgr_applicables.map((produit, idx) => (
+                        <Badge key={idx} className="text-sm bg-primary/10 text-primary px-3 py-1">
+                          {produit}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  <div>
+                    <h5 className="font-semibold text-lg text-foreground mb-2">Entreprises leaders</h5>
+                    <div className="flex flex-wrap gap-2">
+                      {opportunity.exemples_entreprises.map((entreprise, idx) => (
+                        <Badge
+                          key={idx}
+                          variant="outline"
+                          className="text-sm px-3 py-1 bg-secondary text-secondary-foreground"
+                        >
+                          {entreprise}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Fixed competitor analysis display with better error handling */}
       {searchType === "concurrent" && competitorAnalysis && (
-        <Card className="hover:shadow-md transition-shadow">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-red-600" />
+        <Card className="bg-card border border-border/50 shadow-md hover:shadow-lg transition-shadow duration-200">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-3 text-2xl font-bold text-primary">
+              <Shield className="w-7 h-7" />
               Analyse de {competitorAnalysis.nom_entreprise || "Concurrent"}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Synthèse */}
+          <CardContent className="space-y-8 pt-4">
             {competitorAnalysis.synthese && (
               <div>
-                <h5 className="font-medium text-gray-800 mb-2">Synthèse</h5>
-                <p className="text-gray-700 text-sm">{competitorAnalysis.synthese}</p>
+                <h5 className="font-semibold text-lg text-foreground mb-2">Synthèse</h5>
+                <p className="text-muted-foreground text-base">{competitorAnalysis.synthese}</p>
               </div>
             )}
+
             {(competitorAnalysis.produits_services?.length > 0 || competitorAnalysis.marches_cibles?.length > 0) && (
-              <Separator />
+              <Separator className="bg-border/50" />
             )}
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Produits & Services */}
+
+            <div className="grid md:grid-cols-2 gap-8">
               {competitorAnalysis.produits_services && competitorAnalysis.produits_services.length > 0 && (
                 <div>
-                  <h5 className="font-medium text-gray-800 mb-3 flex items-center gap-2">
-                    <Package className="w-4 h-4" />
+                  <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+                    <Package className="w-5 h-5 text-primary" />
                     Produits & Services
                   </h5>
-                  <div className="space-y-1">
+                  <div className="flex flex-wrap gap-2">
                     {competitorAnalysis.produits_services.map((produit, idx) => (
-                      <Badge key={idx} variant="outline" className="text-xs mr-1 mb-1">
+                      <Badge
+                        key={idx}
+                        variant="outline"
+                        className="text-sm px-3 py-1 bg-secondary text-secondary-foreground"
+                      >
                         {produit}
                       </Badge>
                     ))}
                   </div>
                 </div>
               )}
-              {/* Marchés Cibles */}
               {competitorAnalysis.marches_cibles && competitorAnalysis.marches_cibles.length > 0 && (
                 <div>
-                  <h5 className="font-medium text-gray-800 mb-3 flex items-center gap-2">
-                    <Target className="w-4 h-4" />
+                  <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+                    <Target className="w-5 h-5 text-primary" />
                     Marchés Cibles
                   </h5>
-                  <div className="space-y-1">
+                  <div className="flex flex-wrap gap-2">
                     {competitorAnalysis.marches_cibles.map((marche, idx) => (
-                      <Badge key={idx} variant="secondary" className="text-xs mr-1 mb-1">
+                      <Badge key={idx} variant="secondary" className="text-sm px-3 py-1 bg-primary/10 text-primary">
                         {marche}
                       </Badge>
                     ))}
@@ -550,37 +549,37 @@ export default function ResultsDisplay({
                 </div>
               )}
             </div>
+
             {(competitorAnalysis.forces_apparentes?.length > 0 ||
-              competitorAnalysis.faiblesses_potentielles?.length > 0) && <Separator />}
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Forces apparentes */}
+              competitorAnalysis.faiblesses_potentielles?.length > 0) && <Separator className="bg-border/50" />}
+
+            <div className="grid md:grid-cols-2 gap-8">
               {competitorAnalysis.forces_apparentes && competitorAnalysis.forces_apparentes.length > 0 && (
                 <div>
-                  <h5 className="font-medium text-green-800 mb-3 flex items-center gap-2">
-                    <Award className="w-4 h-4" />
+                  <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+                    <Award className="w-5 h-5 text-green-600" />
                     Forces apparentes
                   </h5>
-                  <ul className="space-y-1">
+                  <ul className="space-y-2">
                     {competitorAnalysis.forces_apparentes.map((force, idx) => (
-                      <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
-                        <CheckCircle className="w-3 h-3 text-green-500 mt-0.5 flex-shrink-0" />
+                      <li key={idx} className="text-base text-muted-foreground flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-1 flex-shrink-0" />
                         {force}
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
-              {/* Faiblesses potentielles */}
               {competitorAnalysis.faiblesses_potentielles && competitorAnalysis.faiblesses_potentielles.length > 0 && (
                 <div>
-                  <h5 className="font-medium text-red-800 mb-3 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
+                  <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-red-600" />
                     Faiblesses potentielles
                   </h5>
-                  <ul className="space-y-1">
+                  <ul className="space-y-2">
                     {competitorAnalysis.faiblesses_potentielles.map((faiblesse, idx) => (
-                      <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
-                        <AlertCircle className="w-3 h-3 text-red-500 mt-0.5 flex-shrink-0" />
+                      <li key={idx} className="text-base text-muted-foreground flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-500 mt-1 flex-shrink-0" />
                         {faiblesse}
                       </li>
                     ))}
@@ -588,27 +587,27 @@ export default function ResultsDisplay({
                 </div>
               )}
             </div>
-            {/* Stratégie de communication */}
+
             {competitorAnalysis.strategie_communication && (
               <>
-                <Separator />
+                <Separator className="bg-border/50" />
                 <div>
-                  <h5 className="font-medium text-gray-800 mb-2">Stratégie de communication</h5>
-                  <p className="text-gray-700 text-sm">{competitorAnalysis.strategie_communication}</p>
+                  <h5 className="font-semibold text-lg text-foreground mb-2">Stratégie de communication</h5>
+                  <p className="text-muted-foreground text-base">{competitorAnalysis.strategie_communication}</p>
                 </div>
               </>
             )}
-            {/* Show message if no detailed analysis is available */}
+
             {!competitorAnalysis.synthese &&
               !competitorAnalysis.produits_services?.length &&
               !competitorAnalysis.marches_cibles?.length &&
               !competitorAnalysis.forces_apparentes?.length &&
               !competitorAnalysis.faiblesses_potentielles?.length &&
               !competitorAnalysis.strategie_communication && (
-                <div className="text-center py-8">
-                  <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
-                  <p className="text-yellow-800 font-medium">Analyse limitée disponible</p>
-                  <p className="text-yellow-600 text-sm mt-1">
+                <div className="text-center py-8 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <Info className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
+                  <p className="text-yellow-800 font-medium text-lg">Analyse limitée disponible</p>
+                  <p className="text-yellow-700 text-sm mt-1">
                     L'analyse du concurrent "{competitorAnalysis.nom_entreprise}" n'a pas retourné de détails complets.
                   </p>
                 </div>
@@ -616,38 +615,39 @@ export default function ResultsDisplay({
           </CardContent>
         </Card>
       )}
-      {/* No competitor analysis found */}
+
       {searchType === "concurrent" && !competitorAnalysis && (
-        <Card className="border-orange-200 bg-orange-50">
-          <CardContent className="p-6 text-center">
-            <AlertCircle className="w-12 h-12 text-orange-600 mx-auto mb-4" />
-            <p className="text-orange-800 font-medium">Analyse du concurrent non disponible</p>
-            <p className="text-orange-600 text-sm mt-1">
+        <Card className="border-orange-400 bg-orange-50 shadow-lg rounded-xl">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="w-16 h-16 text-orange-600 mx-auto mb-6" />
+            <p className="text-orange-800 font-bold text-xl">Analyse du concurrent non disponible</p>
+            <p className="text-orange-700 text-base mt-2">
               L'analyse du concurrent n'a pas pu être récupérée ou est vide.
             </p>
           </CardContent>
         </Card>
       )}
 
-      {/* Enterprise display */}
       {searchType === "entreprises" && (
-        <div className="grid gap-6">
+        <div className="space-y-6">
           {displayProspects.length > 0 ? (
             <>
-              <h3 className="text-lg font-semibold text-gray-800">
+              <h3 className="text-2xl font-bold text-foreground">
                 Entreprises identifiées ({displayProspects.length})
               </h3>
-              {displayProspects.map((prospect, index) => (
-                <ProspectCard key={index} prospect={prospect} />
-              ))}
+              <div className="grid gap-6">
+                {displayProspects.map((prospect, index) => (
+                  <ProspectCard key={index} prospect={prospect} />
+                ))}
+              </div>
             </>
           ) : (
-            <Card className="border-orange-200 bg-orange-50">
-              <CardContent className="p-6 text-center">
-                <AlertCircle className="w-12 h-12 text-orange-600 mx-auto mb-4" />
-                <p className="text-orange-800 font-medium">Aucune entreprise trouvée</p>
-                <p className="text-orange-600 text-sm mt-1">
-                  La recherche a été effectuée mais aucune entreprise ne correspond aux critères
+            <Card className="border-orange-400 bg-orange-50 shadow-lg rounded-xl">
+              <CardContent className="p-8 text-center">
+                <AlertCircle className="w-16 h-16 text-orange-600 mx-auto mb-6" />
+                <p className="text-orange-800 font-bold text-xl">Aucune entreprise trouvée</p>
+                <p className="text-orange-700 text-base mt-2">
+                  La recherche a été effectuée mais aucune entreprise ne correspond aux critères.
                 </p>
               </CardContent>
             </Card>
@@ -655,23 +655,24 @@ export default function ResultsDisplay({
         </div>
       )}
 
-      {/* Contacts display */}
       {searchType === "contacts" && (
-        <div className="grid gap-4">
+        <div className="space-y-6">
           {contacts && contacts.length > 0 ? (
             <>
-              <h3 className="text-lg font-semibold text-gray-800">Contacts identifiés ({contacts.length})</h3>
-              {contacts.map((contact, index) => (
-                <ContactCard key={index} contact={contact} />
-              ))}
+              <h3 className="text-2xl font-bold text-foreground">Contacts identifiés ({contacts.length})</h3>
+              <div className="grid gap-6">
+                {contacts.map((contact, index) => (
+                  <ContactCard key={index} contact={contact} />
+                ))}
+              </div>
             </>
           ) : (
-            <Card className="border-orange-200 bg-orange-50">
-              <CardContent className="p-6 text-center">
-                <AlertCircle className="w-12 h-12 text-orange-600 mx-auto mb-4" />
-                <p className="text-orange-800 font-medium">Aucun contact trouvé</p>
-                <p className="text-orange-600 text-sm mt-1">
-                  La recherche a été effectuée mais aucun contact ne correspond aux critères
+            <Card className="border-orange-400 bg-orange-50 shadow-lg rounded-xl">
+              <CardContent className="p-8 text-center">
+                <AlertCircle className="w-16 h-16 text-orange-600 mx-auto mb-6" />
+                <p className="text-orange-800 font-bold text-xl">Aucun contact trouvé</p>
+                <p className="text-orange-700 text-base mt-2">
+                  La recherche a été effectuée mais aucun contact ne correspond aux critères.
                 </p>
               </CardContent>
             </Card>
@@ -681,24 +682,34 @@ export default function ResultsDisplay({
 
       {/* Footer sources globales */}
       {sources && sources.length > 0 && (
-        <Card className="bg-gray-50">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <ExternalLink className="w-5 h-5 text-gray-600" />
+        <Card className="bg-card border border-border/50 shadow-md rounded-xl">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl flex items-center gap-3 text-foreground font-bold">
+              <ExternalLink className="w-6 h-6 text-primary" />
               Sources utilisées
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
+          <CardContent className="pt-4">
+            <div className="flex flex-wrap gap-3">
               {[...new Set(sources)]
                 .filter((source) => isValidUrl(source))
                 .slice(0, 10)
                 .map((source, idx) => (
-                  <Button key={idx} variant="outline" size="sm" className="text-xs bg-transparent">
-                    <ExternalLink className="w-3 h-3 mr-1" />
+                  <Button
+                    key={idx}
+                    variant="outline"
+                    size="sm"
+                    className="h-9 text-sm bg-background text-primary hover:bg-primary/5 hover:text-primary border-primary/20 rounded-md"
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
                     {getHostname(source)}
                   </Button>
                 ))}
+              {[...new Set(sources)].filter((source) => isValidUrl(source)).length > 10 && (
+                <Badge variant="outline" className="text-sm bg-background text-muted-foreground px-3 py-1">
+                  +{([...new Set(sources)].filter((source) => isValidUrl(source)).length || 0) - 10} autres
+                </Badge>
+              )}
             </div>
           </CardContent>
         </Card>

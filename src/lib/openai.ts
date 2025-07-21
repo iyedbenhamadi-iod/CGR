@@ -93,13 +93,13 @@ EXPERTISE CGR DISPONIBLE:
 
 RÈGLES ABSOLUES:
 1. PRODUITS CGR: Utilise UNIQUEMENT les produits CGR spécifiés par l'utilisateur
-2. SECTEUR: Reste strictement dans le secteur spécifié
+2. SECTEURS: Distribue les marchés entre TOUS les secteurs spécifiés (pas seulement un seul)
 3. TAILLE ENTREPRISE: Cible les entreprises de la taille spécifiée
 4. VOLUME: Respecte les volumes de production indiqués
 
 CRITÈRES MARCHÉS:
 - Synergie technologique avec les produits CGR spécifiés
-- Marché en croissance dans le secteur ciblé
+- Marché en croissance dans les secteurs ciblés
 - Entreprises de la taille appropriée
 - Volume de production compatible
 - Qualité/précision = avantage concurrentiel
@@ -115,13 +115,14 @@ Format JSON requis:
       "produits_cgr_applicables": ["Uniquement les produits spécifiés par l'utilisateur"],
       "exemples_entreprises": ["Entreprise 1", "Entreprise 2", "Entreprise 3"],
       "taille_entreprises_cibles": "Taille d'entreprise spécifiée par l'utilisateur",
-      "volume_pieces_estime": "Volume compatible avec les spécifications"
+      "volume_pieces_estime": "Volume compatible avec les spécifications",
+      "secteur": "Secteur d'activité du marché"
     }
   ]
 }
 
 CONTRAINTES STRICTES:
-- Exactement 5 marchés
+- Exactement 5 marchés RÉPARTIS entre TOUS les secteurs spécifiés
 - Produits CGR limités à ceux spécifiés par l'utilisateur
 - Taille d'entreprise respectée
 - Volume de pièces compatible
@@ -135,7 +136,8 @@ CONTRAINTES STRICTES:
       ...(data.clientsExclure ? data.clientsExclure.split('\n').filter(Boolean) : [])
     ];
 
-    const secteurPrincipal = data.secteursActivite[0] || 'Industriel';
+    // FIX: Use ALL sectors, not just the first one
+    const secteursCibles = data.secteursActivite.length > 0 ? data.secteursActivite : ['Industriel'];
     const tailleEntreprise = data.tailleEntreprise || 'Toutes tailles';
     const volumePieces = data.volumePieces && data.volumePieces.length > 0 ? data.volumePieces[0] : 50000;
     const usinesCGR = data.usinesCGR || ['Saint-Yorre', 'PMPC', 'Igé'];
@@ -145,11 +147,14 @@ CONTRAINTES STRICTES:
     // Validation des produits CGR - utiliser uniquement ceux spécifiés
     const produitsCGRSpecifiques = data.produitsCGR.length > 0 ? data.produitsCGR : ['Ressorts fil'];
 
-    return `CONSIGNE CRITIQUE: Tu dois identifier ${nombreResultats} marchés/applications UNIQUEMENT dans le secteur "${secteurPrincipal}" en utilisant EXCLUSIVEMENT les produits CGR spécifiés.
+    return `CONSIGNE CRITIQUE: Tu dois identifier ${nombreResultats} marchés/applications en les RÉPARTISSANT entre les secteurs suivants : "${secteursCibles.join('", "')}" en utilisant EXCLUSIVEMENT les produits CGR spécifiés.
 
 **CONTRAINTES STRICTES À RESPECTER:**
 
-**Secteur ciblé OBLIGATOIRE:** ${secteurPrincipal}
+**Secteurs ciblés OBLIGATOIRES (RÉPARTIR les ${nombreResultats} marchés entre ces secteurs):** 
+${secteursCibles.map((secteur, index) => `${index + 1}. ${secteur}`).join('\n')}
+
+⚠️ IMPORTANT: Les ${nombreResultats} marchés doivent être RÉPARTIS entre TOUS ces secteurs. Ne te concentre pas sur un seul secteur !
 
 **Produits CGR AUTORISÉS (AUCUN AUTRE):** ${produitsCGRSpecifiques.join(', ')}
 ⚠️ IMPORTANT: Ne propose QUE ces produits dans tes réponses. Ignore tous les autres produits CGR.
@@ -171,51 +176,91 @@ ${tailleEntreprise === 'Grande entreprise' ? '- Cibler des grandes entreprises (
 **Clients actuels à éviter:** ${excludeClients.join(', ')}
 
 **OBJECTIF PRÉCIS:**
-Identifier exactement ${nombreResultats} marchés/applications dans le secteur "${secteurPrincipal}" où CGR pourrait apporter ses "${produitsCGRSpecifiques.join(', ')}" à des entreprises de taille "${tailleEntreprise}" avec un volume annuel d'environ ${volumePieces.toLocaleString()} pièces.
+Identifier exactement ${nombreResultats} marchés/applications en les DISTRIBUANT entre les secteurs "${secteursCibles.join('", "')}" où CGR pourrait apporter ses "${produitsCGRSpecifiques.join(', ')}" à des entreprises de taille "${tailleEntreprise}" avec un volume annuel d'environ ${volumePieces.toLocaleString()} pièces.
 
-**FOCUS SECTEUR ${secteurPrincipal.toUpperCase()}:**
-${this.getSectorSpecificGuidance(secteurPrincipal, produitsCGRSpecifiques)}
+**RÉPARTITION SECTORIELLE OBLIGATOIRE:**
+${this.getSectorDistributionGuidance(secteursCibles, nombreResultats, produitsCGRSpecifiques)}
 
 **RÈGLES ABSOLUES:**
 1. Utilise UNIQUEMENT les produits "${produitsCGRSpecifiques.join(', ')}" 
-2. Tous les marchés doivent être dans le secteur "${secteurPrincipal}"
+2. DISTRIBUE les ${nombreResultats} marchés entre TOUS les secteurs : "${secteursCibles.join('", "')}"
 3. Cible des entreprises de taille "${tailleEntreprise}"
 4. Volume compatible avec ${volumePieces.toLocaleString()} pièces/an
 5. Évite les clients mentionnés dans la liste d'exclusion
+6. Chaque marché doit spécifier son secteur d'appartenance
 
 **VALIDATION:**
 - Chaque marché doit utiliser au moins un des produits spécifiés
+- Les marchés doivent couvrir TOUS les secteurs spécifiés
 - La taille d'entreprise doit correspondre à "${tailleEntreprise}"
 - Le volume doit être réaliste pour ${volumePieces.toLocaleString()} pièces/an
 
 Retourne uniquement le JSON demandé, sans aucun texte supplémentaire.`;
   }
 
+  private getSectorDistributionGuidance(secteurs: string[], nombreResultats: number, produitsCGR: string[]): string {
+    const produitsStr = produitsCGR.join(', ');
+    const marcheParSecteur = Math.ceil(nombreResultats / secteurs.length);
+    
+    let guidance = `Tu dois répartir les ${nombreResultats} marchés comme suit:\n`;
+    
+    secteurs.forEach((secteur, index) => {
+      const nbMarches = index < nombreResultats % secteurs.length ? 
+        Math.floor(nombreResultats / secteurs.length) + 1 : 
+        Math.floor(nombreResultats / secteurs.length);
+        
+      if (nbMarches > 0) {
+        guidance += `\n**${secteur.toUpperCase()} (${nbMarches} marché${nbMarches > 1 ? 's' : ''}):**\n`;
+        guidance += this.getSectorSpecificGuidance(secteur, produitsCGR);
+      }
+    });
+    
+    return guidance;
+  }
+
   private getSectorSpecificGuidance(secteur: string, produitsCGR: string[]): string {
     const produitsStr = produitsCGR.join(', ');
     
     switch (secteur.toLowerCase()) {
-      case 'médical':
-        return `Applications médicales spécifiques pour ${produitsStr}:
-- Dispositifs médicaux nécessitant des ressorts de précision
-- Équipements hospitaliers avec mécanismes ressort
-- Instruments chirurgicaux avec composants ressort
-- Appareils de diagnostic avec systèmes de tension
-- Prothèses et orthèses avec mécanismes ressort`;
-        
       case 'aéronautique':
         return `Applications aéronautiques pour ${produitsStr}:
-- Composants avion nécessitant des ressorts haute performance
-- Systèmes de cabine avec mécanismes ressort
+- Systèmes de contrôle de vol avec ressorts de précision
+- Mécanismes de cabine avec ressorts spécialisés
 - Équipements de navigation avec composants ressort
-- Systèmes de sécurité avec ressorts de précision`;
+- Systèmes de sécurité avion avec ressorts haute performance
+- Trains d'atterrissage avec ressorts de suspension`;
+        
+      case 'industrie électrique':
+        return `Applications industrie électrique pour ${produitsStr}:
+- Disjoncteurs et interrupteurs avec ressorts de contact
+- Relais électriques avec mécanismes ressort
+- Transformateurs avec ressorts de serrage
+- Armoires électriques avec ressorts de verrouillage
+- Connecteurs électriques avec ressorts de contact`;
         
       case 'automobile':
         return `Applications automobiles pour ${produitsStr}:
 - Systèmes de sécurité avec ressorts spéciaux
 - Composants intérieur avec mécanismes ressort
 - Équipements électriques avec ressorts de contact
-- Systèmes de confort avec ressorts de précision`;
+- Systèmes de confort avec ressorts de précision
+- Mécanismes de verrouillage avec ressorts`;
+        
+      case 'ferroviaire':
+        return `Applications ferroviaires pour ${produitsStr}:
+- Systèmes de freinage avec ressorts de sécurité
+- Bogies avec ressorts de suspension
+- Portes de train avec mécanismes ressort
+- Systèmes de signalisation avec ressorts de contact
+- Pantographes avec ressorts de pression`;
+        
+      case 'médical':
+        return `Applications médicales pour ${produitsStr}:
+- Dispositifs médicaux avec ressorts de précision
+- Équipements hospitaliers avec mécanismes ressort
+- Instruments chirurgicaux avec composants ressort
+- Appareils de diagnostic avec systèmes de tension
+- Prothèses et orthèses avec mécanismes ressort`;
         
       case 'énergie':
         return `Applications énergétiques pour ${produitsStr}:
@@ -226,7 +271,7 @@ Retourne uniquement le JSON demandé, sans aucun texte supplémentaire.`;
         
       default:
         return `Applications industrielles pour ${produitsStr}:
-- Machines spéciales nécessitant des ressorts de précision
+- Machines spéciales avec ressorts de précision
 - Équipements automatisés avec mécanismes ressort
 - Systèmes de sécurité industriels
 - Appareils de mesure avec composants ressort`;
