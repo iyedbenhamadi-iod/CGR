@@ -57,31 +57,121 @@ interface EnterpriseSearchData {
 }
 
 // Fixed score calculation for a score out of 10
+// Fonction de scoring corrigée pour une échelle de 0 à 10
 const calculateScore = (enterprise: Enterprise): number => {
   let score = 0;
   
-  // Products targeted at prospect (max 3 points)
+  // 1. Produits ciblés chez le prospect (max 3 points)
   const targetedProducts = enterprise.potentiel_cgr.produits_cibles_chez_le_prospect.length;
-  score += Math.min(3, targetedProducts * 0.5);
-  
-  // CGR products to propose (max 3 points)
-  const cgrProducts = enterprise.potentiel_cgr.produits_cgr_a_proposer.length;
-  score += Math.min(3, cgrProducts * 0.5);
-  
-  // Quality of approach argument (max 3 points)
-  const argumentLength = enterprise.potentiel_cgr.argumentaire_approche.length;
-  if (argumentLength > 200) {
+  if (targetedProducts >= 4) {
     score += 3;
-  } else if (argumentLength > 100) {
+  } else if (targetedProducts >= 2) {
+    score += 2;
+  } else if (targetedProducts >= 1) {
+    score += 1;
+  }
+  
+  // 2. Produits CGR à proposer (max 3 points)
+  const cgrProducts = enterprise.potentiel_cgr.produits_cgr_a_proposer.length;
+  if (cgrProducts >= 4) {
+    score += 3;
+  } else if (cgrProducts >= 2) {
+    score += 2;
+  } else if (cgrProducts >= 1) {
+    score += 1;
+  }
+  
+  // 3. Qualité de l'argumentaire d'approche (max 3 points)
+  const argumentLength = enterprise.potentiel_cgr.argumentaire_approche.length;
+  if (argumentLength > 300) {
+    score += 3;
+  } else if (argumentLength > 150) {
     score += 2;
   } else if (argumentLength > 50) {
     score += 1;
   }
   
-  // Base score (1 point for having basic info)
-  score += 1;
+  // 4. Bonus pour la diversité des produits de l'entreprise (max 1 point)
+  const companyProducts = enterprise.produits_entreprise.length;
+  if (companyProducts >= 5) {
+    score += 1;
+  } else if (companyProducts >= 3) {
+    score += 0.5;
+  }
   
-  // Round to 1 decimal place
+  // 5. Bonus pour l'identification du fournisseur actuel (max 1 point)
+  if (enterprise.fournisseur_actuel_estimation && 
+      enterprise.fournisseur_actuel_estimation !== 'Non identifié' &&
+      enterprise.fournisseur_actuel_estimation.length > 10) {
+    score += 1;
+  }
+  
+  // 6. Bonus pour la qualité des sources (max 1 point)
+  const sourcesCount = enterprise.sources?.length || 0;
+  if (sourcesCount >= 3) {
+    score += 1;
+  } else if (sourcesCount >= 2) {
+    score += 0.5;
+  }
+  
+  // 7. Bonus pour la présence d'un site web (max 0.5 point)
+  if (enterprise.site_web && enterprise.site_web !== 'Non disponible') {
+    score += 0.5;
+  }
+  
+  // 8. Bonus pour la qualité de la description d'activité (max 0.5 point)
+  if (enterprise.description_activite && enterprise.description_activite.length > 100) {
+    score += 0.5;
+  }
+  
+  // Assurer que le score reste entre 0 et 10
+  score = Math.min(10, Math.max(0, score));
+  
+  // Arrondir à 1 décimale
+  return Math.round(score * 10) / 10;
+};
+
+// Version alternative avec pondération différente
+const calculateScoreAlternative = (enterprise: Enterprise): number => {
+  let score = 0;
+  
+  // Critères principaux (70% du score - 7 points max)
+  
+  // Adéquation produits (4 points max - 40% du score)
+  const targetedProducts = enterprise.potentiel_cgr.produits_cibles_chez_le_prospect.length;
+  const cgrProducts = enterprise.potentiel_cgr.produits_cgr_a_proposer.length;
+  const productMatch = Math.min(4, (targetedProducts + cgrProducts) * 0.4);
+  score += productMatch;
+  
+  // Qualité de l'approche commerciale (3 points max - 30% du score)
+  const argumentLength = enterprise.potentiel_cgr.argumentaire_approche.length;
+  if (argumentLength > 250) {
+    score += 3;
+  } else if (argumentLength > 150) {
+    score += 2;
+  } else if (argumentLength > 80) {
+    score += 1.5;
+  } else if (argumentLength > 30) {
+    score += 1;
+  }
+  
+  // Critères secondaires (30% du score - 3 points max)
+  
+  // Informations disponibles sur l'entreprise (1.5 points max)
+  let infoBonus = 0;
+  if (enterprise.site_web && enterprise.site_web !== 'Non disponible') infoBonus += 0.5;
+  if (enterprise.produits_entreprise.length >= 3) infoBonus += 0.5;
+  if (enterprise.fournisseur_actuel_estimation && enterprise.fournisseur_actuel_estimation !== 'Non identifié') infoBonus += 0.5;
+  score += infoBonus;
+  
+  // Qualité des sources (1.5 points max)
+  const sourcesCount = enterprise.sources?.length || 0;
+  const sourceBonus = Math.min(1.5, sourcesCount * 0.3);
+  score += sourceBonus;
+  
+  // Assurer que le score reste entre 0 et 10
+  score = Math.min(10, Math.max(0, score));
+  
   return Math.round(score * 10) / 10;
 };
 
