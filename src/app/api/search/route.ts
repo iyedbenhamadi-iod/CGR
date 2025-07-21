@@ -1,4 +1,4 @@
-// app/api/search/route.ts (Enhanced with concurrency control)
+// app/api/search/route.ts (Fixed with user isolation)
 import { NextRequest, NextResponse } from 'next/server';
 
 interface EnhancedSearchData {
@@ -24,12 +24,12 @@ interface EnhancedSearchData {
   includeLinkedIn?: boolean;
 }
 
-// Enhanced request queue and concurrency management
+// Enhanced request queue with proper user isolation
 class RequestQueue {
   private static instance: RequestQueue;
   private activeRequests: Map<string, Promise<any>> = new Map();
   private requestCount: number = 0;
-  private readonly MAX_CONCURRENT_REQUESTS = 10; // Adjust based on your needs
+  private readonly MAX_CONCURRENT_REQUESTS = 10;
 
   static getInstance(): RequestQueue {
     if (!RequestQueue.instance) {
@@ -41,10 +41,11 @@ class RequestQueue {
   async executeRequest<T>(
     requestId: string,
     requestFn: () => Promise<T>,
-    timeout: number = 180000
+    timeout: number = 180000,
+    allowDeduplication: boolean = false // New parameter to control deduplication
   ): Promise<T> {
-    // Check if same request is already in progress (deduplication)
-    if (this.activeRequests.has(requestId)) {
+    // Only deduplicate if explicitly allowed (for same user requests)
+    if (allowDeduplication && this.activeRequests.has(requestId)) {
       console.log(`🔄 Request ${requestId} already in progress, waiting for result`);
       return this.activeRequests.get(requestId);
     }
@@ -65,7 +66,11 @@ class RequestQueue {
         console.log(`✅ Completed request ${requestId} (${this.requestCount}/${this.MAX_CONCURRENT_REQUESTS})`);
       });
 
-    this.activeRequests.set(requestId, requestPromise);
+    // Only store in cache if deduplication is allowed
+    if (allowDeduplication) {
+      this.activeRequests.set(requestId, requestPromise);
+    }
+    
     return requestPromise;
   }
 
@@ -81,6 +86,60 @@ class RequestQueue {
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
+}
+
+// Generate user-specific request ID
+function generateRequestId(searchData: EnhancedSearchData, userId?: string): string {
+  const key = {
+    userId: userId || 'anonymous', // Include user ID in the key
+    timestamp: Date.now(), // Add timestamp to make each request unique
+    type: searchData.typeRecherche,
+    sectors: searchData.secteursActivite?.sort(),
+    zone: searchData.zoneGeographique?.sort(),
+    size: searchData.tailleEntreprise,
+    keywords: searchData.motsCles,
+    products: searchData.produitsCGR?.sort(),
+    competitor: searchData.nomConcurrent,
+    company: searchData.nomEntreprise
+  };
+  
+  return Buffer.from(JSON.stringify(key)).toString('base64').slice(0, 32);
+}
+
+// Extract user ID from request (multiple strategies)
+function getUserId(request: NextRequest): string {
+  // Strategy 1: From Authorization header
+  const authHeader = request.headers.get('authorization');
+  if (authHeader) {
+    // Extract user ID from JWT or session token
+    try {
+      // If using JWT, decode it here
+      // const token = authHeader.replace('Bearer ', '');
+      // const decoded = jwt.decode(token);
+      // return decoded.userId;
+      return authHeader.replace('Bearer ', '').slice(0, 16); // Simple fallback
+    } catch (e) {
+      console.warn('Failed to decode auth token');
+    }
+  }
+
+  // Strategy 2: From custom header
+  const customUserId = request.headers.get('x-user-id');
+  if (customUserId) {
+    return customUserId;
+  }
+
+  // Strategy 3: From IP + User-Agent (fallback)
+  const ip = request.headers.get('x-forwarded-for') || 
+             request.headers.get('x-real-ip') || 
+             'unknown';
+  const userAgent = request.headers.get('user-agent') || 'unknown';
+  
+  // Create a simple hash from IP + User-Agent
+  const fallbackId = Buffer.from(`${ip}-${userAgent}`).toString('base64').slice(0, 16);
+  
+  console.log(`🔍 Generated fallback user ID: ${fallbackId} (IP: ${ip})`);
+  return fallbackId;
 }
 
 // Enhanced error handling with retry logic
@@ -135,22 +194,6 @@ async function makeApiCall(
   throw new Error('All retry attempts failed');
 }
 
-// Generate unique request ID for deduplication
-function generateRequestId(searchData: EnhancedSearchData): string {
-  const key = {
-    type: searchData.typeRecherche,
-    sectors: searchData.secteursActivite?.sort(),
-    zone: searchData.zoneGeographique?.sort(),
-    size: searchData.tailleEntreprise,
-    keywords: searchData.motsCles,
-    products: searchData.produitsCGR?.sort(),
-    competitor: searchData.nomConcurrent,
-    company: searchData.nomEntreprise
-  };
-  
-  return Buffer.from(JSON.stringify(key)).toString('base64').slice(0, 32);
-}
-
 function getBaseUrl(request: NextRequest): string {
   const url = new URL(request.url);
   return `${url.protocol}//${url.host}`;
@@ -169,14 +212,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const requestId = generateRequestId(searchData);
-    console.log(`🔍 New search request: ${searchData.typeRecherche} (ID: ${requestId})`);
+    // Get unique user ID for this request
+    const userId = getUserId(request);
+    const requestId = generateRequestId(searchData, userId);
+    
+    console.log(`🔍 New search request: ${searchData.typeRecherche} (ID: ${requestId}, User: ${userId})`);
 
-    // Execute request through queue with deduplication
+    // Execute request through queue WITHOUT deduplication (each user gets fresh results)
     const result = await requestQueue.executeRequest(
       requestId,
       () => executeSearch(searchData, request),
-      200000 // 200s timeout for complex searches
+      200000, // 200s timeout for complex searches
+      false // Disable deduplication to prevent cross-user result sharing
     );
 
     return NextResponse.json(result);
