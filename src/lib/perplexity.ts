@@ -122,7 +122,8 @@ CONTRAINTES STRICTES:
 - Respecter la taille d'entreprise demandée
 - Cibler la zone géographique spécifiée
 - Adapter au volume de pièces requis
-
+- tu dois bien expliquer comment chaque entreprise répond aux critères et pourquoi elle est un prospect potentiel dans argumentaire approche
+- l'expliquation doit etre detaillee et pertinente
 RÉPONSE JSON OBLIGATOIRE avec exactement cette structure:
 {
   "enterprises": [
