@@ -1,4 +1,5 @@
 import type React from "react"
+
 export interface FormData {
   typeRecherche: string
   secteursActivite: string[]
@@ -13,6 +14,7 @@ export interface FormData {
   nomEntreprise: string
   siteWebEntreprise: string
   nombreResultats: number
+  contactRoles: string[] // Nouveau champ pour les rôles de contacts
 }
 
 export interface StepProps {
@@ -36,6 +38,7 @@ export const SECTEURS_ACTIVITE = [
   "Défense",
   "Ferroviaire",
 ]
+
 export const ZONES_GEOGRAPHIQUES = [
   "Rhône-Alpes",
   "Île-de-France",
@@ -46,6 +49,7 @@ export const ZONES_GEOGRAPHIQUES = [
   "Proximité usine Tricot",
   "Proximité usine PMPC",
 ]
+
 export const PRODUITS_CGR = [
   "Ressort fil",
   "Ressort plat",
@@ -55,5 +59,21 @@ export const PRODUITS_CGR = [
   "Mécatronique",
   "Injection plastique",
 ]
+
 export const USINES_CGR = ["Sevran", "Blagnac", "PMPC", "Tricot", "Igé", "Saint-Yorre"]
+
 export const CLIENTS_EXISTANTS = ["Forvia", "Valeo", "Schneider Electric", "Dassault Aviation", "Thales", "Safran"]
+
+// Nouveaux rôles de contacts
+export const CONTACT_ROLES = [
+  "Responsable achat",
+  "Responsable achat métal", 
+  "Responsable achat ressort",
+  "Responsable découpe",
+  "Acheteur commodité",
+  "Acheteur projet",
+  "Directeur Technique/R&D/Innovation",
+  "Responsable Achats/Approvisionnement",
+  "Directeur Production/Qualité",
+  "Direction Générale"
+]

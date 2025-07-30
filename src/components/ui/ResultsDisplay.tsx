@@ -72,6 +72,7 @@ interface CompetitorAnalysis {
   synthese: string
   produits_services: string[]
   marches_cibles: string[]
+  entreprises_clientes: string[]; 
   forces_apparentes: string[]
   faiblesses_potentielles: string[]
   strategie_communication: string
@@ -549,6 +550,29 @@ export default function ResultsDisplay({
                 </div>
               )}
             </div>
+            {competitorAnalysis.entreprises_clientes && competitorAnalysis.entreprises_clientes.length > 0 && (
+                <>
+                  <Separator className="bg-border/50" />
+                  <div>
+                    <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+                      <Building2 className="w-5 h-5 text-primary" />
+                      Clients Identifiés du Concurrent
+                    </h5>
+                    <div className="flex flex-wrap gap-2">
+                      {competitorAnalysis.entreprises_clientes.map((client, idx) => (
+                        <Badge
+                          key={idx}
+                          variant="outline"
+                          className="text-sm px-3 py-1 bg-accent/10 border-accent/30 text-accent-foreground"
+                        >
+                          {client}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </>
+            )}
+
 
             {(competitorAnalysis.forces_apparentes?.length > 0 ||
               competitorAnalysis.faiblesses_potentielles?.length > 0) && <Separator className="bg-border/50" />}

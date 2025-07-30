@@ -2,12 +2,20 @@ import axios from 'axios';
 
 interface CompetitorAnalysis {
   synthese_entreprise: string;
+  synthese?: string; // Add this for backward compatibility
   produits_services: string[];
   marches_cibles: string[];
+  entreprises_clientes: string[];
   forces_apparentes: string[];
   faiblesses_potentielles: string[];
   strategie_communication: string;
   sources: string[];
+}
+
+interface CompetitorAnalysisResult {
+  analysis: CompetitorAnalysis | null;
+  success: boolean;
+  error?: string;
 }
 
 export class CompetitorAnalysisClient {
@@ -21,7 +29,7 @@ export class CompetitorAnalysisClient {
     }
   }
 
-  async analyzeCompetitor(competitorName: string): Promise<any> {
+  async analyzeCompetitor(competitorName: string): Promise<CompetitorAnalysisResult> {
     const prompt = this.buildCompetitorAnalysisPrompt(competitorName);
     
     try {
@@ -54,7 +62,7 @@ export class CompetitorAnalysisClient {
   private getSystemPrompt(): string {
     return `Expert analyste concurrentiel pour l'industrie mécanique et des composants industriels.
 
-MISSION: Analyser en profondeur un concurrent de CGR International (fabricant de ressorts et composants mécaniques).
+MISSION: Analyser en profondeur un concurrent de CGR International (fabricant de ressorts et composants mécaniques) ET identifier ses clients actuels.
 
 SOURCES À CONSULTER:
 - Site web officiel
@@ -63,12 +71,25 @@ SOURCES À CONSULTER:
 - Communiqués de presse
 - Profils LinkedIn dirigeants
 - Catalogues produits
+- Références clients mentionnées
+- Études de cas publiées
+- Partenariats annoncés
 
 ANALYSE OBLIGATOIRE:
 - Positionnement concurrentiel
 - Forces/faiblesses vs CGR
 - Stratégie commerciale
+- **CLIENTS IDENTIFIÉS** (priorité absolue)
 - Opportunités de différenciation
+
+**IMPORTANT**: Les clients du concurrent sont des prospects potentiels pour CGR International. 
+Rechercher activement:
+- Clients mentionnés sur le site web
+- Logos clients affichés
+- Témoignages et études de cas
+- Communiqués de partenariats
+- Références dans la presse
+- Secteurs clients principaux
 
 RÉPONSE JSON OBLIGATOIRE:
 {
@@ -76,6 +97,7 @@ RÉPONSE JSON OBLIGATOIRE:
     "synthese_entreprise": "Analyse détaillée 200+ mots",
     "produits_services": ["...", "..."],
     "marches_cibles": ["...", "..."],
+    "entreprises_clientes": ["Nom Client 1", "Nom Client 2", "..."],
     "forces_apparentes": ["...", "..."],
     "faiblesses_potentielles": ["...", "..."],
     "strategie_communication": "Analyse positionnement 150+ mots",
@@ -85,7 +107,7 @@ RÉPONSE JSON OBLIGATOIRE:
   }
 
   private buildCompetitorAnalysisPrompt(competitorName: string): string {
-    return `Analyse concurrentielle approfondie de "${competitorName}", concurrent de CGR International.
+    return `Analyse concurrentielle approfondie de "${competitorName}", concurrent de CGR International, avec IDENTIFICATION PRIORITAIRE de ses clients.
 
 **Contexte CGR International:**
 - Fabricant français de ressorts industriels et composants mécaniques
@@ -96,19 +118,40 @@ RÉPONSE JSON OBLIGATOIRE:
 **Analyse requise pour ${competitorName}:**
 
 1. **Profil entreprise**: Historique, taille, implantations, effectifs, CA
+
 2. **Offre produits**: Gammes, spécialités, innovations récentes
+
 3. **Positionnement marché**: Segments, clients types, géographie
-4. **Stratégie commerciale**: Arguments de vente, différenciation
-5. **Forces concurrentielles**: Atouts vs CGR
-6. **Vulnérabilités**: Faiblesses exploitables par CGR
-7. **Communication**: Messages clés, stratégie digitale
 
-OBJECTIF: Identifier opportunités de positionnement concurrentiel pour CGR.
+4. **🎯 CLIENTS IDENTIFIÉS (PRIORITÉ ABSOLUE):**
+   - Rechercher sur le site web: pages références, témoignages, logos clients
+   - Communiqués de presse mentionnant des contrats/partenariats
+   - Études de cas publiées avec noms de clients
+   - Secteurs clients principaux (automobile, aéronautique, etc.)
+   - Partenaires industriels mentionnés
+   - **Objectif**: Identifier nommément les entreprises clientes du concurrent
 
-Sources à consulter obligatoirement: site web, actualités 2024, rapports si disponibles.`;
+5. **Stratégie commerciale**: Arguments de vente, différenciation
+
+6. **Forces concurrentielles**: Atouts vs CGR
+
+7. **Vulnérabilités**: Faiblesses exploitables par CGR
+
+8. **Communication**: Messages clés, stratégie digitale
+
+**MÉTHODOLOGIE DE RECHERCHE CLIENTS:**
+- Consulter la page "Références" ou "Clients" du site web
+- Examiner les témoignages et études de cas
+- Analyser les communiqués de presse récents
+- Identifier les logos clients affichés
+- Rechercher les mentions dans les actualités sectorielles
+
+OBJECTIF PRINCIPAL: Les clients identifiés du concurrent sont des prospects directs pour CGR International.
+
+Sources à consulter obligatoirement: site web complet, actualités 2024, rapports si disponibles, pages références clients.`;
   }
 
-  private parseCompetitorResponse(response: any): { analysis: CompetitorAnalysis | null, success: boolean, error?: string } {
+  private parseCompetitorResponse(response: any): CompetitorAnalysisResult {
     try {
       const content = response.choices[0]?.message?.content || '';
       
@@ -126,13 +169,20 @@ Sources à consulter obligatoirement: site web, actualités 2024, rapports si di
       const analysis = parsed.analysis;
       const cleanedAnalysis: CompetitorAnalysis = {
         synthese_entreprise: String(analysis.synthese_entreprise || '').trim(),
+        synthese: String(analysis.synthese || analysis.synthese_entreprise || '').trim(), // Add backward compatibility
         produits_services: Array.isArray(analysis.produits_services) ? analysis.produits_services : [],
         marches_cibles: Array.isArray(analysis.marches_cibles) ? analysis.marches_cibles : [],
+        entreprises_clientes: Array.isArray(analysis.entreprises_clientes) ? 
+          analysis.entreprises_clientes.filter((client: any) => client && String(client).trim()) : [],
         forces_apparentes: Array.isArray(analysis.forces_apparentes) ? analysis.forces_apparentes : [],
         faiblesses_potentielles: Array.isArray(analysis.faiblesses_potentielles) ? analysis.faiblesses_potentielles : [],
         strategie_communication: String(analysis.strategie_communication || '').trim(),
         sources: Array.isArray(analysis.sources) ? analysis.sources.filter(Boolean) : []
       };
+
+      // Log pour debug - vérifier si les clients ont été trouvés
+      const competitorName = 'Unknown'; // We don't have access to competitorName in this scope
+      console.log(`🎯 Clients identifiés:`, cleanedAnalysis.entreprises_clientes);
 
       return {
         analysis: cleanedAnalysis,

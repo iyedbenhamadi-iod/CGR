@@ -93,64 +93,114 @@ export class PerplexityEnterpriseClient {
   }
 
   private getSystemPrompt(): string {
-    return `Tu es un expert en intelligence économique spécialisé dans l'identification de prospects pour CGR International, fabricant français de composants mécaniques industriels.
+    return `Tu es un expert en intelligence économique spécialisé dans l'identification de prospects FABRICANTS pour CGR International, fabricant français de composants mécaniques industriels.
 
-MISSION CRITIQUE: Identifier des entreprises CLIENTES potentielles qui UTILISENT des composants mécaniques dans leurs produits manufacturés.
+MISSION CRITIQUE: Identifier UNIQUEMENT des entreprises FABRICANTES qui possèdent des USINES DE PRODUCTION et qui conçoivent/fabriquent des produits finis intégrant des composants mécaniques.
 
 EXPERTISE CGR DISPONIBLE:
 - Ressorts (fil, plat, torsion) - haute précision
-- Pièces découpées de précision
+- Pièces découpées de précision  
 - Formage de tubes
 - Assemblages automatisés
 - Mécatronique
 - Injection plastique
 
+⚠️ ATTENTION FABRICANTS DE RESSORTS: Si une entreprise fabrique des ressorts, elle est CONCURRENTE de CGR → À EXCLURE ABSOLUMENT
+
 RÈGLES ABSOLUES DE CIBLAGE:
-✅ CHERCHER: Entreprises qui ACHÈTENT et UTILISENT des composants mécaniques
-✅ FOCUS: Fabricants de produits finis intégrant des composants mécaniques
-✅ CIBLE: Entreprises ayant des besoins en composants de précision
+✅ FABRICANTS UNIQUEMENT - RECHERCHE OBLIGATOIRE:
+- Nom officiel complet de l'entreprise
+- Localisation EXACTE des usines de production (ville, pays)
+- Activité de CONCEPTION et FABRICATION de produits finis (pas distribution)
+- Si partie d'un GROUPE: nom du groupe, maison-mère, autres filiales
+- Produits SPÉCIFIQUES fabriqués dans chaque usine
+- Nombre d'employés et chiffre d'affaires si disponible
+
+✅ INFORMATIONS OBLIGATOIRES À RECHERCHER ET VÉRIFIER:
+1. **NOM ET STRUCTURE**: Raison sociale complète, appartenance à un groupe
+2. **LOCALISATION USINES**: Adresses exactes des sites de production  
+3. **ACTIVITÉ RÉELLE**: Fabrication vs distribution vs installation
+4. **PRODUITS FABRIQUÉS**: Liste précise des produits manufacturés
+5. **CAPACITÉS**: Volumes de production, effectifs, technologies
 
 ❌ EXCLURE ABSOLUMENT:
-- Fabricants de ressorts (concurrents directs)
-- Grossistes/distributeurs de composants mécaniques
-- Entreprises de négoce en composants
+- Revendeurs, distributeurs, négociants, importateurs
+- Installateurs, intégrateurs, bureau d'études
+- Entreprises de services (maintenance, réparation, SAV)
+- Grossistes en composants mécaniques
+- Fabricants de ressorts, pièces découpées, tubes (CONCURRENTS DIRECTS CGR)
 - Entreprises nommées "CGR" ou similaires
-- Sous-traitants mécaniques généralistes
+- Sous-traitants mécaniques généralistes sans produits finis propres
+- Filiales commerciales sans production
+
+EXEMPLES D'EXCLUSIONS TYPIQUES:
+❌ Tracelec (installateur d'instruments, pas fabricant)
+❌ Güntner (distributeur/fournisseur, pas fabricant d'origine)
+❌ Sociétés de négoce industriel
+❌ Distributeurs d'équipements industriels
+❌ Bureaux d'études sans production
+❌ Filiales commerciales de groupes (chercher la filiale de production)
+
+PROCESSUS DE VALIDATION OBLIGATOIRE:
+Avant d'inclure UNE SEULE entreprise, tu DOIS rechercher et confirmer:
+1. A-t-elle des USINES DE PRODUCTION identifiées ? (Où exactement ?)
+2. FABRIQUE-t-elle ses propres produits finis ? (Lesquels précisément ?)
+3. Fait-elle partie d'un GROUPE ? (Lequel ? Autres filiales ?)
+4. A-t-elle des activités R&D/conception ? (Dans quels domaines ?)
+5. N'est-elle PAS uniquement distributrice/installatrice ?
 
 CONTRAINTES STRICTES:
 - Utiliser UNIQUEMENT les produits CGR spécifiés par l'utilisateur
 - Respecter la taille d'entreprise demandée
 - Cibler la zone géographique spécifiée
 - Adapter au volume de pièces requis
-- tu dois bien expliquer comment chaque entreprise répond aux critères et pourquoi elle est un prospect potentiel dans argumentaire approche
-- l'expliquation doit etre detaillee et pertinente
+- Dans l'argumentaire approche, tu DOIS obligatoirement détailler:
+  * Nom complet et raison sociale
+  * Localisation EXACTE de chaque usine de production
+  * Structure du groupe (maison-mère, filiales, autres sites)
+  * Produits SPÉCIFIQUES fabriqués dans chaque usine
+  * Pourquoi elle a besoin EXACTEMENT des composants CGR
+  * Volumes estimés et capacités de production
+  * Fournisseurs actuels probables
+
 RÉPONSE JSON OBLIGATOIRE avec exactement cette structure:
 {
   "enterprises": [
     {
-      "nom_entreprise": "...",
-      "site_web": "...",
-      "description_activite": "...",
-      "produits_entreprise": ["...", "..."],
+      "nom_entreprise": "Raison sociale complète officielle",
+      "site_web": "URL officielle",
+      "description_activite": "Description détaillée de l'activité de FABRICATION uniquement",
+      "produits_entreprise": ["Produit 1 fabriqué", "Produit 2 fabriqué", "..."],
       "potentiel_cgr": {
-        "produits_cibles_chez_le_prospect": ["...", "..."],
-        "produits_cgr_a_proposer": ["Uniquement les produits spécifiés"],
-        "argumentaire_approche": "..."
+        "produits_cibles_chez_le_prospect": ["Composants utilisés dans produit 1", "Composants utilisés dans produit 2"],
+        "produits_cgr_a_proposer": ["Uniquement les produits CGR spécifiés par l'utilisateur"],
+        "argumentaire_approche": "OBLIGATOIRE ET DÉTAILLÉ: 1) Nom complet et raison sociale 2) Usines: [Ville, Pays] pour chaque site de production 3) Groupe: appartenance, maison-mère, autres filiales 4) Produits fabriqués: liste exacte par usine 5) Besoins composants: volume, spécifications 6) Capacité production et R&D 7) Fournisseurs actuels estimés - MINIMUM 200 mots"
       },
-      "fournisseur_actuel_estimation": "...",
-      "sources": ["...", "..."],
-      "taille_entreprise": "Taille spécifiée par l'utilisateur",
+      "fournisseur_actuel_estimation": "Fournisseurs probables basés sur recherche",
+      "sources": ["Source 1 avec URL", "Source 2 avec URL"],
+      "taille_entreprise": "Taille exacte spécifiée par l'utilisateur",
       "volume_pieces_estime": "Volume compatible avec les spécifications",
-      "zone_geographique": "Zone géographique de l'entreprise"
+      "zone_geographique": "Zone géographique précise avec pays"
     }
   ]
 }
 
-VALIDATION FINALE:
-- Chaque entreprise doit utiliser au moins un des produits CGR spécifiés
-- La taille doit correspondre exactement à celle demandée
-- Le volume doit être compatible avec les spécifications
-- Les sources doivent être récentes et fiables`;
+VALIDATION FINALE ULTRA-STRICTE:
+- Chaque entreprise doit avoir des USINES DE PRODUCTION identifiées avec localisation
+- Doit concevoir et fabriquer des produits finis (JAMAIS de distribution/revente)
+- L'argumentaire doit contenir: usines exactes, groupe, produits fabriqués, besoins
+- AUCUN concurrent direct CGR (ressorts, découpe, formage tubes)
+- Taille et volume correspondant exactement
+- Sources récentes et fiables avec URLs
+- Si tu n'es pas sûr à 100% qu'une entreprise FABRIQUE → NE PAS L'INCLURE
+
+RECHERCHE APPROFONDIE OBLIGATOIRE:
+Pour chaque entreprise potentielle, tu DOIS rechercher:
+- "nom entreprise" + "usine" + "production" + "fabrication"
+- "nom entreprise" + "manufacturing" + "plant" + "factory" 
+- "nom entreprise" + "groupe" + "filiale" + "maison mère"
+- Vérifier sur site officiel la section "Qui sommes-nous" / "Nos sites"
+- Rechercher dans annuaires industriels et bases de données entreprises`;
   }
 
   private buildEnterpriseSearchPrompt(data: EnterpriseSearchData): string {
@@ -167,16 +217,17 @@ VALIDATION FINALE:
     const motsCles = data.motsCles || 'composants mécaniques, précision, qualité';
     const usinesCGR = data.usinesCGR || ['Saint-Yorre', 'PMPC', 'Igé'];
 
-    return `RECHERCHE CIBLÉE: ${data.nombreResultats} entreprises CLIENTES potentielles pour CGR International
+    return `RECHERCHE CIBLÉE: ${data.nombreResultats} entreprises FABRICANTES pour CGR International
 
 **CONTRAINTES STRICTES À RESPECTER:**
 
 **Secteur d'activité OBLIGATOIRE:** ${secteurPrincipal}
-- Focus exclusif sur ce secteur
-- Entreprises qui fabriquent des produits dans ce secteur
+- Focus exclusif sur les FABRICANTS de ce secteur
+- Entreprises qui conçoivent ET fabriquent des produits dans ce secteur
+- Avec usines de production identifiées
 
 **Zone géographique ciblée:** ${zoneGeo}
-- Priorité aux entreprises dans ces zones
+- Priorité aux entreprises avec usines dans ces zones
 - Proximité avec les usines CGR: ${usinesCGR.join(', ')}
 
 **Taille d'entreprise EXACTE:** ${tailleEntreprise}
@@ -197,29 +248,80 @@ ${this.getTailleEntrepriseGuidance(tailleEntreprise)}
 - Éviter ces entreprises et leurs filiales
 - Exclure les concurrents directs
 
-**STRATÉGIE DE RECHERCHE SECTORIELLE:**
+**FOCUS FABRICANTS - RECHERCHE OBLIGATOIRE DÉTAILLÉE:**
+
+Pour chaque secteur, tu DOIS rechercher et confirmer:
+
+1. **IDENTIFICATION PRÉCISE:**
+   - Raison sociale complète et officielle
+   - Siège social et adresses des usines de production
+   - Appartenance à un groupe industriel (maison-mère, filiales)
+
+2. **VÉRIFICATION ACTIVITÉ FABRICATION:**
+   - Sites de production avec localisation exacte (ville, pays)
+   - Capacités de production et effectifs par site
+   - Technologies de fabrication utilisées
+   - Certification qualité (ISO, etc.)
+
+3. **ANALYSE PRODUITS MANUFACTURÉS:**
+   - Gamme de produits fabriqués (pas distribués)
+   - Intégration de composants mécaniques confirmée
+   - Marchés cibles et applications
+   - Volume de production annuel
+
+4. **STRUCTURE ORGANISATIONNELLE:**
+   - Si groupe: identifier toutes les filiales et leurs activités
+   - Répartition géographique des activités
+   - Distinction fabrication vs commercial vs service
+
+5. **BESOINS EN COMPOSANTS MÉCANIQUES:**
+   - Utilisation confirmée des produits CGR spécifiés
+   - Volume annuel estimé compatible
+   - Spécifications techniques probables
+   - Fournisseurs actuels identifiés
+
+**STRATÉGIE DE RECHERCHE SECTORIELLE FABRICANTS:**
 ${this.getSectorSpecificSearchStrategy(secteurPrincipal, produitsCGRSpecifiques)}
 
-**CRITÈRES DE QUALIFICATION:**
-1. **Activité principale:** Fabrication de produits finis dans le secteur "${secteurPrincipal}"
-2. **Besoins identifiés:** Utilisation de "${produitsCGRSpecifiques.join(', ')}" dans leurs produits
-3. **Taille confirmée:** Correspond exactement à "${tailleEntreprise}"
-4. **Volume compatible:** Besoins annuels autour de ${volumePieces.toLocaleString()} pièces
-5. **Localisation:** Basée dans "${zoneGeo}"
+**VALIDATION ANTI-REVENDEUR RENFORCÉE:**
+Avant d'inclure une entreprise, tu DOIS rechercher et confirmer:
+- Possède-t-elle des USINES DE PRODUCTION ? (Adresses exactes)
+- FABRIQUE-t-elle ses propres produits ? (Liste précise)
+- A-t-elle des activités de R&D/conception ? (Preuves)
+- N'est-elle PAS uniquement distributrice/installatrice ?
+- Si groupe: quelle filiale fabrique quoi et où ?
+- Volumes de production et capacités industrielles
+- Effectifs de production vs commercial
+
+⚠️ RECHERCHES OBLIGATOIRES PAR ENTREPRISE:
+1. Site officiel section "Nos usines" / "Production" / "Qui sommes-nous"
+2. Recherche "[nom entreprise] usine production fabrication"
+3. Recherche "[nom entreprise] manufacturing plant factory"
+4. Vérification registre du commerce et bases de données industrielles
+5. Identification structure groupe et filiales
+
+❌ SIGNES D'ALERTE À ÉVITER:
+- Mots-clés: "distributeur", "revendeur", "négociant", "importateur"
+- Activités: "installation", "maintenance", "service après-vente"
+- Description: "nous proposons", "nous commercialisons", "nous distribuons"
+- Pas d'usine identifiée ou seulement bureaux commerciaux
 
 **INFORMATIONS REQUISES PAR ENTREPRISE:**
 - Nom officiel et site web
-- Description précise de l'activité
+- Description précise de l'activité de fabrication
+- Localisation des usines de production
 - Produits fabriqués nécessitant des composants mécaniques
+- Structure groupe (maison-mère, filiales)
 - Potentiel d'utilisation des produits CGR spécifiés
 - Estimation du fournisseur actuel
-- Sources d'information fiables
+- Sources d'information fiables et récentes
 
 **VALIDATION FINALE:**
-- Chaque entreprise doit être un CLIENT potentiel, pas un concurrent
-- Les produits CGR proposés doivent être limités à: ${produitsCGRSpecifiques.join(', ')}
-- La taille et le volume doivent correspondre exactement
-- Les sources doivent être récentes et vérifiables
+- Chaque entreprise doit être un FABRICANT avec usines, pas un revendeur
+- L'argumentaire doit détailler: usine, groupe, produits, conception
+- Les produits CGR proposés limités à: ${produitsCGRSpecifiques.join(', ')}
+- Taille et volume correspondant exactement
+- Sources récentes et vérifiables
 
 Retourne uniquement le JSON demandé, sans texte supplémentaire.`;
   }
@@ -227,25 +329,28 @@ Retourne uniquement le JSON demandé, sans texte supplémentaire.`;
   private getTailleEntrepriseGuidance(taille: string): string {
     switch (taille) {
       case 'PME':
-        return `- Cibler des PME (50-250 salariés)
+        return `- Cibler des PME FABRICANTES (50-250 salariés)
+- Avec usines de production propres
 - Entreprises avec besoins spécifiques et flexibilité
 - Volumes moyens mais réguliers
 - Capacité de décision rapide`;
       
       case 'ETI':
-        return `- Cibler des ETI (250-5000 salariés)
+        return `- Cibler des ETI FABRICANTES (250-5000 salariés)
+- Avec plusieurs sites de production possibles
 - Entreprises avec volumes moyens à importants
 - Processus de décision structuré
 - Besoins en qualité et régularité`;
       
       case 'Grande entreprise':
-        return `- Cibler des grandes entreprises (5000+ salariés)
+        return `- Cibler des grandes entreprises FABRICANTES (5000+ salariés)
+- Avec multiples usines de production
 - Volumes importants et contrats long terme
 - Exigences qualité très élevées
 - Processus de qualification rigoureux`;
       
       default:
-        return `- Toutes tailles d'entreprises
+        return `- Toutes tailles d'entreprises FABRICANTES
 - Adapter l'approche selon la taille`;
     }
   }
@@ -255,58 +360,70 @@ Retourne uniquement le JSON demandé, sans texte supplémentaire.`;
     
     switch (secteur.toLowerCase()) {
       case 'médical':
-        return `SECTEUR MÉDICAL - Rechercher des fabricants de:
-• Dispositifs médicaux intégrant des ${produitsStr}
-• Équipements hospitaliers avec mécanismes précis
-• Instruments chirurgicaux nécessitant des composants ressort
-• Appareils de diagnostic avec systèmes mécaniques
-• Prothèses et orthèses avec mécanismes de précision
-• Matériel de rééducation avec composants mécaniques`;
+        return `SECTEUR MÉDICAL - Rechercher des FABRICANTS avec usines de:
+• Dispositifs médicaux (avec localisation usines) intégrant des ${produitsStr}
+• Équipements hospitaliers (conception + production) avec mécanismes précis
+• Instruments chirurgicaux fabriqués (pas distribués) nécessitant des composants ressort
+• Appareils de diagnostic avec usines identifiées et systèmes mécaniques
+• Prothèses et orthèses avec sites de fabrication et mécanismes de précision
+• Matériel de rééducation conçu et fabriqué avec composants mécaniques
+
+ÉVITER: Distributeurs matériel médical, installateurs équipements hospitaliers`;
         
       case 'aéronautique':
-        return `SECTEUR AÉRONAUTIQUE - Rechercher des fabricants de:
-• Composants d'aéronefs nécessitant des ${produitsStr}
-• Équipements de cabine avec mécanismes précis
-• Systèmes de navigation intégrant des composants mécaniques
-• Équipements de sécurité aéronautique
-• Outillage aéronautique spécialisé
-• Composants satellites et drones`;
+        return `SECTEUR AÉRONAUTIQUE - Rechercher des FABRICANTS avec usines de:
+• Composants d'aéronefs fabriqués (avec sites production) nécessitant des ${produitsStr}
+• Équipements de cabine conçus et produits avec mécanismes précis
+• Systèmes de navigation avec usines identifiées intégrant des composants mécaniques
+• Équipements de sécurité aéronautique fabriqués (pas distribués)
+• Outillage aéronautique spécialisé avec sites de production
+• Composants satellites et drones avec activités conception/fabrication
+
+ÉVITER: Distributeurs aéronautiques, sous-traitants sans produits finis`;
         
       case 'automobile':
-        return `SECTEUR AUTOMOBILE - Rechercher des fabricants de:
-• Systèmes de sécurité automobile intégrant des ${produitsStr}
-• Composants d'habitacle avec mécanismes précis
-• Équipements électriques automobile
-• Accessoires et équipements de confort
-• Systèmes de freinage et suspension (hors grands constructeurs)
-• Outillage automobile spécialisé`;
+        return `SECTEUR AUTOMOBILE - Rechercher des FABRICANTS avec usines de:
+• Équipementiers automobiles (avec usines identifiées) intégrant des ${produitsStr}
+• Composants d'habitacle fabriqués avec mécanismes précis
+• Équipements électriques automobile avec sites de production
+• Accessoires et équipements de confort conçus et fabriqués
+• Systèmes spécialisés (hors grands constructeurs) avec usines propres
+• Outillage automobile spécialisé avec activités de fabrication
+
+ÉVITER: Distributeurs pièces auto, garage, installateurs équipements`;
         
       case 'énergie':
-        return `SECTEUR ÉNERGIE - Rechercher des fabricants de:
-• Équipements éoliens nécessitant des ${produitsStr}
-• Systèmes solaires avec composants mécaniques
-• Équipements de stockage d'énergie
-• Installations de production d'énergie
-• Systèmes de distribution énergétique
-• Équipements de mesure et contrôle énergétique`;
+        return `SECTEUR ÉNERGIE - Rechercher des FABRICANTS avec usines de:
+• Équipements éoliens fabriqués (avec sites production) nécessitant des ${produitsStr}
+• Systèmes solaires avec usines identifiées et composants mécaniques
+• Équipements de stockage d'énergie conçus et fabriqués
+• Installations de production d'énergie avec activités fabrication
+• Systèmes de distribution énergétique avec usines propres
+• Équipements de mesure et contrôle énergétique fabriqués
+
+ÉVITER: Installateurs éolien/solaire, distributeurs équipements énergie`;
         
       case 'défense':
-        return `SECTEUR DÉFENSE - Rechercher des fabricants de:
-• Équipements militaires intégrant des ${produitsStr}
-• Systèmes d'armes avec mécanismes précis
-• Véhicules blindés et composants
-• Équipements de communication militaire
-• Systèmes de protection et sécurité
-• Matériel d'entraînement militaire`;
+        return `SECTEUR DÉFENSE - Rechercher des FABRICANTS avec usines de:
+• Équipements militaires fabriqués (avec sites production) intégrant des ${produitsStr}
+• Systèmes d'armes avec usines identifiées et mécanismes précis
+• Véhicules blindés et composants avec activités de fabrication
+• Équipements de communication militaire conçus et fabriqués
+• Systèmes de protection et sécurité avec usines propres
+• Matériel d'entraînement militaire avec sites de production
+
+ÉVITER: Distributeurs matériel militaire, intégrateurs systèmes`;
         
       default:
-        return `SECTEUR INDUSTRIEL - Rechercher des fabricants de:
-• Machines spéciales nécessitant des ${produitsStr}
-• Équipements automatisés avec mécanismes précis
-• Systèmes de manutention et transport
-• Outillage industriel spécialisé
-• Équipements de mesure et contrôle
-• Machines de production spécifiques`;
+        return `SECTEUR INDUSTRIEL - Rechercher des FABRICANTS avec usines de:
+• Machines spéciales fabriquées (avec sites production) nécessitant des ${produitsStr}
+• Équipements automatisés avec usines identifiées et mécanismes précis
+• Systèmes de manutention et transport conçus et fabriqués
+• Outillage industriel spécialisé avec activités de fabrication
+• Équipements de mesure et contrôle avec usines propres
+• Machines de production spécifiques avec sites de fabrication
+
+ÉVITER: Distributeurs machines industrielles, intégrateurs, bureau d'études`;
     }
   }
 

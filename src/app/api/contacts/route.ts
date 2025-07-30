@@ -85,6 +85,9 @@ interface ContactRequest {
   secteurActivite?: string;
   includeEmails?: boolean;
   includeLinkedIn?: boolean;
+  contactRoles?: string[]; // New field for specific contact roles
+  siteWebEntreprise?: string; // Optional website field
+  nombreResultats?: number; // Number of results requested
 }
 
 export async function POST(request: NextRequest) {
@@ -101,15 +104,20 @@ export async function POST(request: NextRequest) {
     
     console.log('👤 Recherche contacts demandée:', JSON.stringify(requestData, null, 2));
     
-    // Check cache
+    // Enhanced cache key to include contact roles
+    const cacheKeyParams = [
+      `company-${requestData.nomEntreprise}`,
+      `position-${requestData.posteRecherche || 'all'}`,
+      `sector-${requestData.secteurActivite || 'all'}`,
+      `roles-${requestData.contactRoles?.sort().join(',') || 'default'}`,
+      `website-${requestData.siteWebEntreprise || 'none'}`,
+      `results-${requestData.nombreResultats || 10}`
+    ];
+    
     const cacheKey = generateCacheKey(
       `contacts-${requestData.nomEntreprise}`,
       'search',
-      [
-        `company-${requestData.nomEntreprise}`,
-        `position-${requestData.posteRecherche || 'all'}`,
-        `sector-${requestData.secteurActivite || 'all'}`
-      ]
+      cacheKeyParams
     );
     
     const cachedResult = await getCachedResult(cacheKey);
@@ -128,7 +136,8 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Résultat recherche contacts:', {
       success: contactResult.success,
       contactsFound: contactResult.contacts?.length || 0,
-      error: contactResult.error
+      error: contactResult.error,
+      contactRoles: requestData.contactRoles
     });
     
     if (!contactResult.success) {
@@ -140,6 +149,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Transform the contacts to match frontend expectations with LinkedIn validation
+    // Note: Le filtrage par rôles est maintenant fait dans ContactSearchClient.parseContactResponse()
     const transformedContacts = contactResult.contacts?.map(contact => {
       // Valider l'URL LinkedIn avant de l'inclure
       const hasValidLinkedIn = contact.linkedin_url && contact.nom && contact.prenom ? 
@@ -163,48 +173,75 @@ export async function POST(request: NextRequest) {
         linkedin_url: hasValidLinkedIn ? contact.linkedin_url : undefined,
         linkedin_verified: hasValidLinkedIn,
         verified: contact.verified || false,
-        accroche_personnalisee: contact.accroche_personnalisee || undefined,
+        accroche_personnalisee: contact.accroche_personnalisee || contact.accroche || contact.pitch || undefined,
         entreprise: requestData.nomEntreprise,
         secteur: requestData.secteurActivite || '',
-        sources: contact.sources || []
+        sources: contact.sources || [],
+        // Les informations de correspondance des rôles sont maintenant gérées dans contacts.ts
+        matchedRoles: (contact as any).matchedRoles || [],
+        roleScore: (contact as any).roleScore || 0,
+        isRoleRelevant: (contact as any).isRoleRelevant !== undefined ? (contact as any).isRoleRelevant : true
       };
     }) || [];
     
-    // Debug: Log des statistiques LinkedIn
+    // Limit results if requested
+    const limitedContacts = requestData.nombreResultats 
+      ? transformedContacts.slice(0, requestData.nombreResultats)
+      : transformedContacts;
+    
+    // Debug: Log des statistiques LinkedIn et rôles
     const linkedinStats = {
-      totalContacts: transformedContacts.length,
-      contactsWithLinkedIn: transformedContacts.filter(c => c.linkedin_url).length,
-      contactsWithVerifiedLinkedIn: transformedContacts.filter(c => c.linkedin_verified).length,
+      totalContacts: limitedContacts.length,
+      contactsWithLinkedIn: limitedContacts.filter(c => c.linkedin_url).length,
+      contactsWithVerifiedLinkedIn: limitedContacts.filter(c => c.linkedin_verified).length,
       contactsWithInvalidLinkedIn: contactResult.contacts?.filter((original, index) => 
         original.linkedin_url && !transformedContacts[index]?.linkedin_url
       ).length || 0
     };
     
+    const roleStats = {
+      rolesRequested: requestData.contactRoles || [],
+      contactsWithMatchingRoles: limitedContacts.filter(c => c.matchedRoles && c.matchedRoles.length > 0).length,
+      roleDistribution: requestData.contactRoles?.reduce((acc, role) => {
+        acc[role] = limitedContacts.filter(c => 
+          c.matchedRoles?.includes(role)
+        ).length;
+        return acc;
+      }, {} as Record<string, number>) || {}
+    };
+    
     console.log('🔗 Statistiques LinkedIn:', linkedinStats);
+    console.log('👥 Statistiques Rôles:', roleStats);
     
     // Debug: Log the transformed contacts
-    console.log('🔄 Contacts transformés:', transformedContacts.length);
+    console.log('🔄 Contacts transformés:', limitedContacts.length);
     
     const response = {
       searchType: 'contacts',
-      contacts: transformedContacts,
-      totalFound: transformedContacts.length,
+      contacts: limitedContacts,
+      totalFound: limitedContacts.length,
       cached: false,
       sources: contactResult.sources || [],
-      hasContacts: transformedContacts.length > 0,
+      hasContacts: limitedContacts.length > 0,
       searchCriteria: {
         entreprise: requestData.nomEntreprise,
         posteRecherche: requestData.posteRecherche,
         secteurActivite: requestData.secteurActivite,
         includeEmails: requestData.includeEmails,
-        includeLinkedIn: requestData.includeLinkedIn
+        includeLinkedIn: requestData.includeLinkedIn,
+        contactRoles: requestData.contactRoles,
+        siteWebEntreprise: requestData.siteWebEntreprise,
+        nombreResultats: requestData.nombreResultats
       },
       linkedinStats,
+      roleStats,
       debug: {
-        contactsFound: transformedContacts.length,
+        contactsFound: limitedContacts.length,
         searchComplete: true,
-        originalResult: contactResult.contacts,
-        transformedFields: transformedContacts.map(contact => ({
+        rolesUsed: requestData.contactRoles || [],
+        originalResultsCount: transformedContacts.length,
+        limitApplied: !!requestData.nombreResultats,
+        transformedFields: limitedContacts.map(contact => ({
           nom: !!contact.nom,
           prenom: !!contact.prenom,
           poste: !!contact.poste,
@@ -213,7 +250,8 @@ export async function POST(request: NextRequest) {
           linkedin_url: !!contact.linkedin_url,
           linkedin_verified: contact.linkedin_verified,
           verified: contact.verified,
-          accroche_personnalisee: !!contact.accroche_personnalisee
+          accroche_personnalisee: !!contact.accroche_personnalisee,
+          matchedRoles: contact.matchedRoles
         }))
       }
     };
@@ -224,7 +262,8 @@ export async function POST(request: NextRequest) {
       hasContacts: response.hasContacts,
       contactsCount: response.contacts.length,
       totalFound: response.totalFound,
-      linkedinValidation: linkedinStats
+      linkedinValidation: linkedinStats,
+      roleMatching: roleStats
     });
     
     // Save to cache
@@ -266,6 +305,9 @@ export async function GET(request: NextRequest) {
     const companyName = searchParams.get('company');
     const position = searchParams.get('position');
     const sector = searchParams.get('sector');
+    const roles = searchParams.get('roles'); // New parameter for roles
+    const website = searchParams.get('website');
+    const results = searchParams.get('results');
     
     if (!companyName) {
       return NextResponse.json(
@@ -274,14 +316,20 @@ export async function GET(request: NextRequest) {
       );
     }
     
+    // Enhanced cache key matching POST method
+    const cacheKeyParams = [
+      `company-${companyName}`,
+      `position-${position || 'all'}`,
+      `sector-${sector || 'all'}`,
+      `roles-${roles || 'default'}`,
+      `website-${website || 'none'}`,
+      `results-${results || '10'}`
+    ];
+    
     const cacheKey = generateCacheKey(
       `contacts-${companyName}`,
       'search',
-      [
-        `company-${companyName}`,
-        `position-${position || 'all'}`,
-        `sector-${sector || 'all'}`
-      ]
+      cacheKeyParams
     );
     
     const cachedResult = await getCachedResult(cacheKey);
@@ -290,7 +338,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ...cachedResult, cached: true });
     } else {
       return NextResponse.json(
-        { error: 'Aucune recherche en cache pour cette entreprise' },
+        { error: 'Aucune recherche en cache pour cette entreprise avec ces paramètres' },
         { status: 404 }
       );
     }

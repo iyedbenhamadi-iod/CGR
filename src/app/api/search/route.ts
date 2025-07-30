@@ -1,241 +1,295 @@
-// app/api/search/route.ts (Fixed with user isolation)
+// app/api/contacts/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { ContactSearchClient } from '@/lib/contacts';
+import { getCachedResult, setCachedResult, generateCacheKey } from '@/lib/cache';
 
-interface EnhancedSearchData {
-  typeRecherche: 'entreprises' | 'brainstorming' | 'concurrent' | 'contacts';
-  secteursActivite: string[];
-  zoneGeographique: string[];
-  tailleEntreprise?: string;
-  motsCles?: string;
-  produitsCGR?: string[];
-  volumePieces?: number[];
-  clientsExclure?: string;
-  usinesCGR?: string[];
-  nombreResultats?: number;
-  nomConcurrent?: string;
-  nomEntreprise?: string;
-  siteWebEntreprise?: string;
-  includeMarketAnalysis?: boolean;
-  includeCompetitorAnalysis?: boolean;
-  competitorNames?: string[];
+// Add timeout wrapper for API calls
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
+};
+
+// Fonction pour nettoyer et normaliser les noms pour la validation LinkedIn
+const normalizeNameForLinkedIn = (name: string): string => {
+  return name
+    .toLowerCase()
+    .replace(/[àáâãäå]/g, 'a')
+    .replace(/[èéêë]/g, 'e')
+    .replace(/[ìíîï]/g, 'i')
+    .replace(/[òóôõö]/g, 'o')
+    .replace(/[ùúûü]/g, 'u')
+    .replace(/[ç]/g, 'c')
+    .replace(/[ñ]/g, 'n')
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+};
+
+// Fonction pour valider si une URL LinkedIn correspond au nom de la personne
+const validateLinkedInUrl = (url: string, nom: string, prenom: string): boolean => {
+  if (!url || !url.includes('linkedin.com/in/')) {
+    return false;
+  }
+  
+  try {
+    // Extraire le nom d'utilisateur de l'URL LinkedIn
+    const urlMatch = url.match(/linkedin\.com\/in\/([^/?]+)/);
+    if (!urlMatch) return false;
+    
+    const linkedinUsername = urlMatch[1].toLowerCase();
+    
+    // Normaliser les noms
+    const normalizedPrenom = normalizeNameForLinkedIn(prenom);
+    const normalizedNom = normalizeNameForLinkedIn(nom);
+    
+    // Créer différentes combinaisons possibles
+    const possibleCombinations = [
+      `${normalizedPrenom}-${normalizedNom}`,
+      `${normalizedNom}-${normalizedPrenom}`,
+      `${normalizedPrenom}${normalizedNom}`,
+      `${normalizedNom}${normalizedPrenom}`,
+      normalizedPrenom,
+      normalizedNom
+    ];
+    
+    // Vérifier si l'username LinkedIn correspond à une des combinaisons
+    const matches = possibleCombinations.some(combination => {
+      return linkedinUsername.includes(combination) || 
+             combination.includes(linkedinUsername) ||
+             linkedinUsername === combination;
+    });
+    
+    console.log('🔗 LinkedIn validation:', {
+      url,
+      nom: `${prenom} ${nom}`,
+      linkedinUsername,
+      possibleCombinations,
+      matches
+    });
+    
+    return matches;
+    
+  } catch (error) {
+    console.warn('⚠️ Erreur validation LinkedIn URL:', error);
+    return false;
+  }
+};
+
+interface ContactRequest {
+  nomEntreprise: string;
   posteRecherche?: string;
   secteurActivite?: string;
   includeEmails?: boolean;
   includeLinkedIn?: boolean;
-}
-
-// Enhanced request queue with proper user isolation
-class RequestQueue {
-  private static instance: RequestQueue;
-  private activeRequests: Map<string, Promise<any>> = new Map();
-  private requestCount: number = 0;
-  private readonly MAX_CONCURRENT_REQUESTS = 10;
-
-  static getInstance(): RequestQueue {
-    if (!RequestQueue.instance) {
-      RequestQueue.instance = new RequestQueue();
-    }
-    return RequestQueue.instance;
-  }
-
-  async executeRequest<T>(
-    requestId: string,
-    requestFn: () => Promise<T>,
-    timeout: number = 180000,
-    allowDeduplication: boolean = false // New parameter to control deduplication
-  ): Promise<T> {
-    // Only deduplicate if explicitly allowed (for same user requests)
-    if (allowDeduplication && this.activeRequests.has(requestId)) {
-      console.log(`🔄 Request ${requestId} already in progress, waiting for result`);
-      return this.activeRequests.get(requestId);
-    }
-
-    // Wait if too many concurrent requests
-    while (this.requestCount >= this.MAX_CONCURRENT_REQUESTS) {
-      console.log(`⏳ Queue full, waiting... (${this.requestCount}/${this.MAX_CONCURRENT_REQUESTS})`);
-      await this.delay(1000);
-    }
-
-    this.requestCount++;
-    console.log(`🚀 Starting request ${requestId} (${this.requestCount}/${this.MAX_CONCURRENT_REQUESTS})`);
-
-    const requestPromise = this.withTimeout(requestFn(), timeout)
-      .finally(() => {
-        this.requestCount--;
-        this.activeRequests.delete(requestId);
-        console.log(`✅ Completed request ${requestId} (${this.requestCount}/${this.MAX_CONCURRENT_REQUESTS})`);
-      });
-
-    // Only store in cache if deduplication is allowed
-    if (allowDeduplication) {
-      this.activeRequests.set(requestId, requestPromise);
-    }
-    
-    return requestPromise;
-  }
-
-  private withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) => 
-        setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs)
-      )
-    ]);
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-}
-
-// Generate user-specific request ID
-function generateRequestId(searchData: EnhancedSearchData, userId?: string): string {
-  const key = {
-    userId: userId || 'anonymous', // Include user ID in the key
-    timestamp: Date.now(), // Add timestamp to make each request unique
-    type: searchData.typeRecherche,
-    sectors: searchData.secteursActivite?.sort(),
-    zone: searchData.zoneGeographique?.sort(),
-    size: searchData.tailleEntreprise,
-    keywords: searchData.motsCles,
-    products: searchData.produitsCGR?.sort(),
-    competitor: searchData.nomConcurrent,
-    company: searchData.nomEntreprise
-  };
-  
-  return Buffer.from(JSON.stringify(key)).toString('base64').slice(0, 32);
-}
-
-// Extract user ID from request (multiple strategies)
-function getUserId(request: NextRequest): string {
-  // Strategy 1: From Authorization header
-  const authHeader = request.headers.get('authorization');
-  if (authHeader) {
-    // Extract user ID from JWT or session token
-    try {
-      // If using JWT, decode it here
-      // const token = authHeader.replace('Bearer ', '');
-      // const decoded = jwt.decode(token);
-      // return decoded.userId;
-      return authHeader.replace('Bearer ', '').slice(0, 16); // Simple fallback
-    } catch (e) {
-      console.warn('Failed to decode auth token');
-    }
-  }
-
-  // Strategy 2: From custom header
-  const customUserId = request.headers.get('x-user-id');
-  if (customUserId) {
-    return customUserId;
-  }
-
-  // Strategy 3: From IP + User-Agent (fallback)
-  const ip = request.headers.get('x-forwarded-for') || 
-             request.headers.get('x-real-ip') || 
-             'unknown';
-  const userAgent = request.headers.get('user-agent') || 'unknown';
-  
-  // Create a simple hash from IP + User-Agent
-  const fallbackId = Buffer.from(`${ip}-${userAgent}`).toString('base64').slice(0, 16);
-  
-  console.log(`🔍 Generated fallback user ID: ${fallbackId} (IP: ${ip})`);
-  return fallbackId;
-}
-
-// Enhanced error handling with retry logic
-async function makeApiCall(
-  url: string, 
-  body: any, 
-  retries: number = 2
-): Promise<Response> {
-  for (let attempt = 1; attempt <= retries + 1; attempt++) {
-    try {
-      console.log(`📡 API call attempt ${attempt}/${retries + 1}: ${url}`);
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body)
-      });
-
-      if (response.ok) {
-        return response;
-      }
-
-      // Don't retry on 4xx errors (client errors)
-      if (response.status >= 400 && response.status < 500) {
-        return response;
-      }
-
-      // Retry on 5xx errors
-      if (attempt <= retries) {
-        const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
-        console.log(`⏳ Retrying in ${delay}ms... (attempt ${attempt}/${retries + 1})`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-      
-      return response;
-
-    } catch (error) {
-      console.error(`❌ API call attempt ${attempt} failed:`, error);
-      
-      if (attempt <= retries) {
-        const delay = Math.pow(2, attempt) * 1000;
-        console.log(`⏳ Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      } else {
-        throw error;
-      }
-    }
-  }
-  
-  throw new Error('All retry attempts failed');
-}
-
-function getBaseUrl(request: NextRequest): string {
-  const url = new URL(request.url);
-  return `${url.protocol}//${url.host}`;
+  contactRoles?: string[]; // New field for specific contact roles
+  siteWebEntreprise?: string; // Optional website field
+  nombreResultats?: number; // Number of results requested
 }
 
 export async function POST(request: NextRequest) {
-  const requestQueue = RequestQueue.getInstance();
-  
   try {
-    const searchData: EnhancedSearchData = await request.json();
+    const requestData: ContactRequest = await request.json();
     
-    if (!searchData.typeRecherche) {
+    // Enhanced validation
+    if (!requestData.nomEntreprise) {
       return NextResponse.json(
-        { error: 'Type de recherche requis' },
+        { error: 'Nom de l\'entreprise requis' },
         { status: 400 }
       );
     }
-
-    // Get unique user ID for this request
-    const userId = getUserId(request);
-    const requestId = generateRequestId(searchData, userId);
     
-    console.log(`🔍 New search request: ${searchData.typeRecherche} (ID: ${requestId}, User: ${userId})`);
-
-    // Execute request through queue WITHOUT deduplication (each user gets fresh results)
-    const result = await requestQueue.executeRequest(
-      requestId,
-      () => executeSearch(searchData, request),
-      200000, // 200s timeout for complex searches
-      false // Disable deduplication to prevent cross-user result sharing
+    console.log('👤 Recherche contacts demandée:', JSON.stringify(requestData, null, 2));
+    
+    // Enhanced cache key to include contact roles
+    const cacheKeyParams = [
+      `company-${requestData.nomEntreprise}`,
+      `position-${requestData.posteRecherche || 'all'}`,
+      `sector-${requestData.secteurActivite || 'all'}`,
+      `roles-${requestData.contactRoles?.sort().join(',') || 'default'}`,
+      `website-${requestData.siteWebEntreprise || 'none'}`,
+      `results-${requestData.nombreResultats || 10}`
+    ];
+    
+    const cacheKey = generateCacheKey(
+      `contacts-${requestData.nomEntreprise}`,
+      'search',
+      cacheKeyParams
     );
-
-    return NextResponse.json(result);
-
-  } catch (error: any) {
-    console.error('❌ Search orchestrator error:', error);
     
+    const cachedResult = await getCachedResult(cacheKey);
+    if (cachedResult) {
+      console.log('⚡ Résultat contacts en cache trouvé');
+      return NextResponse.json({ ...cachedResult, cached: true });
+    }
+    
+    // Search contacts with timeout
+    const contactClient = new ContactSearchClient();
+    const contactResult = await withTimeout(
+      contactClient.searchContacts(requestData),
+      120000 // 2 minutes for contact search
+    );
+    
+    console.log('🔍 Résultat recherche contacts:', {
+      success: contactResult.success,
+      contactsFound: contactResult.contacts?.length || 0,
+      error: contactResult.error,
+      contactRoles: requestData.contactRoles
+    });
+    
+    if (!contactResult.success) {
+      return NextResponse.json({ 
+        error: 'Erreur lors de la recherche contacts',
+        details: contactResult.error,
+        type: 'contact_search_error'
+      }, { status: 500 });
+    }
+    
+    // Transform the contacts to match frontend expectations with LinkedIn validation
+    const transformedContacts = contactResult.contacts?.map(contact => {
+      // Valider l'URL LinkedIn avant de l'inclure
+      const hasValidLinkedIn = contact.linkedin_url && contact.nom && contact.prenom ? 
+        validateLinkedInUrl(contact.linkedin_url, contact.nom, contact.prenom) : false;
+      
+      // Log des URLs LinkedIn invalides pour debugging
+      if (contact.linkedin_url && !hasValidLinkedIn) {
+        console.warn('❌ URL LinkedIn invalide détectée:', {
+          nom: `${contact.prenom} ${contact.nom}`,
+          linkedin_url: contact.linkedin_url,
+          raison: 'Ne correspond pas au nom de la personne'
+        });
+      }
+      
+      return {
+        nom: contact.nom || '',
+        prenom: contact.prenom || '',
+        poste: contact.poste || '',
+        email: contact.email || undefined,
+        phone: contact.phone || undefined,
+        linkedin_url: hasValidLinkedIn ? contact.linkedin_url : undefined,
+        linkedin_verified: hasValidLinkedIn,
+        verified: contact.verified || false,
+        accroche_personnalisee: contact.accroche_personnalisee || contact.accroche || contact.pitch || undefined,
+        entreprise: requestData.nomEntreprise,
+        secteur: requestData.secteurActivite || '',
+        sources: contact.sources || [],
+        // Add role matching information
+        matchedRoles: requestData.contactRoles?.filter(role => 
+          contact.poste?.toLowerCase().includes(role.toLowerCase()) ||
+          role.toLowerCase().includes(contact.poste?.toLowerCase() || '')
+        ) || []
+      };
+    }) || [];
+    
+    // Sort contacts by role relevance if specific roles were requested
+    if (requestData.contactRoles && requestData.contactRoles.length > 0) {
+      transformedContacts.sort((a, b) => {
+        const aMatches = a.matchedRoles?.length || 0;
+        const bMatches = b.matchedRoles?.length || 0;
+        return bMatches - aMatches; // Sort by most role matches first
+      });
+    }
+    
+    // Limit results if requested
+    const limitedContacts = requestData.nombreResultats 
+      ? transformedContacts.slice(0, requestData.nombreResultats)
+      : transformedContacts;
+    
+    // Debug: Log des statistiques LinkedIn et rôles
+    const linkedinStats = {
+      totalContacts: limitedContacts.length,
+      contactsWithLinkedIn: limitedContacts.filter(c => c.linkedin_url).length,
+      contactsWithVerifiedLinkedIn: limitedContacts.filter(c => c.linkedin_verified).length,
+      contactsWithInvalidLinkedIn: contactResult.contacts?.filter((original, index) => 
+        original.linkedin_url && !transformedContacts[index]?.linkedin_url
+      ).length || 0
+    };
+    
+    const roleStats = {
+      rolesRequested: requestData.contactRoles || [],
+      contactsWithMatchingRoles: limitedContacts.filter(c => c.matchedRoles && c.matchedRoles.length > 0).length,
+      roleDistribution: requestData.contactRoles?.reduce((acc, role) => {
+        acc[role] = limitedContacts.filter(c => 
+          c.matchedRoles?.includes(role)
+        ).length;
+        return acc;
+      }, {} as Record<string, number>) || {}
+    };
+    
+    console.log('🔗 Statistiques LinkedIn:', linkedinStats);
+    console.log('👥 Statistiques Rôles:', roleStats);
+    
+    // Debug: Log the transformed contacts
+    console.log('🔄 Contacts transformés:', limitedContacts.length);
+    
+    const response = {
+      searchType: 'contacts',
+      contacts: limitedContacts,
+      totalFound: limitedContacts.length,
+      cached: false,
+      sources: contactResult.sources || [],
+      hasContacts: limitedContacts.length > 0,
+      searchCriteria: {
+        entreprise: requestData.nomEntreprise,
+        posteRecherche: requestData.posteRecherche,
+        secteurActivite: requestData.secteurActivite,
+        includeEmails: requestData.includeEmails,
+        includeLinkedIn: requestData.includeLinkedIn,
+        contactRoles: requestData.contactRoles,
+        siteWebEntreprise: requestData.siteWebEntreprise,
+        nombreResultats: requestData.nombreResultats
+      },
+      linkedinStats,
+      roleStats,
+      debug: {
+        contactsFound: limitedContacts.length,
+        searchComplete: true,
+        rolesUsed: requestData.contactRoles || [],
+        originalResultsCount: transformedContacts.length,
+        limitApplied: !!requestData.nombreResultats,
+        transformedFields: limitedContacts.map(contact => ({
+          nom: !!contact.nom,
+          prenom: !!contact.prenom,
+          poste: !!contact.poste,
+          email: !!contact.email,
+          phone: !!contact.phone,
+          linkedin_url: !!contact.linkedin_url,
+          linkedin_verified: contact.linkedin_verified,
+          verified: contact.verified,
+          accroche_personnalisee: !!contact.accroche_personnalisee,
+          matchedRoles: contact.matchedRoles
+        }))
+      }
+    };
+    
+    // Debug: Log the final response structure
+    console.log('📤 Réponse finale contacts:', {
+      searchType: response.searchType,
+      hasContacts: response.hasContacts,
+      contactsCount: response.contacts.length,
+      totalFound: response.totalFound,
+      linkedinValidation: linkedinStats,
+      roleMatching: roleStats
+    });
+    
+    // Save to cache
+    await setCachedResult(cacheKey, response, 43200); // 12h cache (contacts change more frequently)
+    console.log('✅ Recherche contacts terminée:', requestData.nomEntreprise);
+    
+    return NextResponse.json(response);
+    
+  } catch (error: any) {
+    console.error('❌ Erreur recherche contacts:', error);
+    
+    // Enhanced error handling with specific error types
     if (error.message?.includes('timed out')) {
       return NextResponse.json(
         { 
-          error: 'Timeout de la recherche',
-          details: 'La recherche a pris trop de temps. Veuillez réessayer.',
+          error: 'Timeout de la recherche contacts',
+          details: 'La recherche de contacts a pris trop de temps. Veuillez réessayer.',
           type: 'timeout'
         },
         { status: 408 }
@@ -243,164 +297,66 @@ export async function POST(request: NextRequest) {
     }
     
     return NextResponse.json(
-      {
-        error: 'Erreur lors de la recherche CGR',
+      { 
+        error: 'Erreur lors de la recherche contacts', 
         details: process.env.NODE_ENV === 'development' ? error.message : 'Erreur interne du serveur',
-        type: 'server_error'
+        type: 'contact_search_error'
       },
       { status: 500 }
     );
   }
 }
 
-async function executeSearch(searchData: EnhancedSearchData, request: NextRequest) {
-  switch (searchData.typeRecherche) {
-    case 'brainstorming':
-      return await handleBrainstormingSearch(searchData, request);
-    case 'concurrent':
-      return await handleCompetitorSearch(searchData, request);
-    case 'contacts':
-      return await handleContactSearch(searchData, request);
-    case 'entreprises':
-    default:
-      return await handleEnterpriseSearch(searchData, request);
-  }
-}
-
-async function handleContactSearch(searchData: EnhancedSearchData, request: NextRequest) {
-  if (!searchData.nomEntreprise) {
-    throw new Error('Nom de l\'entreprise requis pour la recherche de contacts');
-  }
-  
-  const baseUrl = getBaseUrl(request);
-  const response = await makeApiCall(`${baseUrl}/api/contacts`, {
-    nomEntreprise: searchData.nomEntreprise,
-    posteRecherche: searchData.posteRecherche,
-    secteurActivite: searchData.secteurActivite,
-    includeEmails: searchData.includeEmails,
-    includeLinkedIn: searchData.includeLinkedIn
-  });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Contact search failed');
-  }
-  
-  return await response.json();
-}
-
-async function handleBrainstormingSearch(searchData: EnhancedSearchData, request: NextRequest) {
-  const baseUrl = getBaseUrl(request);
-  const response = await makeApiCall(`${baseUrl}/api/brainstorming`, {
-    secteursActivite: searchData.secteursActivite,
-    zoneGeographique: searchData.zoneGeographique,
-    produitsCGR: searchData.produitsCGR,
-    clientsExclure: searchData.clientsExclure
-  });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Brainstorming search failed');
-  }
-  
-  return await response.json();
-}
-
-async function handleCompetitorSearch(searchData: EnhancedSearchData, request: NextRequest) {
-  if (!searchData.nomConcurrent) {
-    throw new Error('Nom du concurrent requis');
-  }
-  
-  const baseUrl = getBaseUrl(request);
-  const response = await makeApiCall(`${baseUrl}/api/competitors`, {
-    nomConcurrent: searchData.nomConcurrent
-  });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Competitor search failed');
-  }
-  
-  return await response.json();
-}
-
-async function handleEnterpriseSearch(searchData: EnhancedSearchData, request: NextRequest) {
-  const baseUrl = getBaseUrl(request);
-  const response = await makeApiCall(`${baseUrl}/api/enterprises`, {
-    secteursActivite: searchData.secteursActivite,
-    zoneGeographique: searchData.zoneGeographique,
-    tailleEntreprise: searchData.tailleEntreprise,
-    motsCles: searchData.motsCles,
-    produitsCGR: searchData.produitsCGR,
-    volumePieces: searchData.volumePieces,
-    clientsExclure: searchData.clientsExclure,
-    usinesCGR: searchData.usinesCGR,
-    nombreResultats: searchData.nombreResultats
-  });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Enterprise search failed');
-  }
-  
-  let result = await response.json();
-  
-  // Handle additional analyses with parallel execution
-  const additionalAnalyses = [];
-  
-  if (searchData.includeMarketAnalysis) {
-    additionalAnalyses.push(
-      makeApiCall(`${baseUrl}/api/brainstorming`, {
-        secteursActivite: searchData.secteursActivite,
-        zoneGeographique: searchData.zoneGeographique,
-        produitsCGR: searchData.produitsCGR,
-        clientsExclure: searchData.clientsExclure
-      }).then(async (res) => {
-        if (res.ok) {
-          const marketResult = await res.json();
-          return { type: 'market', data: marketResult.marketOpportunities };
-        }
-        return null;
-      }).catch(() => null)
-    );
-  }
-  
-  if (searchData.includeCompetitorAnalysis && searchData.competitorNames?.length) {
-    const competitorPromises = searchData.competitorNames.map(competitorName =>
-      makeApiCall(`${baseUrl}/api/competitors`, {
-        nomConcurrent: competitorName
-      }).then(async (res) => {
-        if (res.ok) {
-          const competitorResult = await res.json();
-          return { name: competitorName, analysis: competitorResult.competitorAnalysis };
-        }
-        return null;
-      }).catch(() => null)
+// GET endpoint for retrieving cached contact searches
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const companyName = searchParams.get('company');
+    const position = searchParams.get('position');
+    const sector = searchParams.get('sector');
+    const roles = searchParams.get('roles'); // New parameter for roles
+    const website = searchParams.get('website');
+    const results = searchParams.get('results');
+    
+    if (!companyName) {
+      return NextResponse.json(
+        { error: 'Nom de l\'entreprise requis' },
+        { status: 400 }
+      );
+    }
+    
+    // Enhanced cache key matching POST method
+    const cacheKeyParams = [
+      `company-${companyName}`,
+      `position-${position || 'all'}`,
+      `sector-${sector || 'all'}`,
+      `roles-${roles || 'default'}`,
+      `website-${website || 'none'}`,
+      `results-${results || '10'}`
+    ];
+    
+    const cacheKey = generateCacheKey(
+      `contacts-${companyName}`,
+      'search',
+      cacheKeyParams
     );
     
-    additionalAnalyses.push(
-      Promise.all(competitorPromises).then(results => ({
-        type: 'competitor',
-        data: results.filter(Boolean)
-      }))
+    const cachedResult = await getCachedResult(cacheKey);
+    
+    if (cachedResult) {
+      return NextResponse.json({ ...cachedResult, cached: true });
+    } else {
+      return NextResponse.json(
+        { error: 'Aucune recherche en cache pour cette entreprise avec ces paramètres' },
+        { status: 404 }
+      );
+    }
+    
+  } catch (error: any) {
+    console.error('❌ Erreur récupération cache contacts:', error);
+    return NextResponse.json(
+      { error: 'Erreur lors de la récupération du cache' },
+      { status: 500 }
     );
   }
-  
-  // Wait for all additional analyses
-  if (additionalAnalyses.length > 0) {
-    const additionalResults = await Promise.allSettled(additionalAnalyses);
-    
-    additionalResults.forEach((settledResult) => {
-      if (settledResult.status === 'fulfilled' && settledResult.value) {
-        const { type, data } = settledResult.value;
-        if (type === 'market') {
-          result.marketAnalysis = data;
-        } else if (type === 'competitor' && data.length > 0) {
-          result.competitorAnalysis = data;
-        }
-      }
-    });
-  }
-  
-  return result;
 }

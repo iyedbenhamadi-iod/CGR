@@ -77,6 +77,7 @@ export default function Dashboard() {
                 synthese: data.competitorAnalysis.synthese || "",
                 produits_services: data.competitorAnalysis.produits_services || [],
                 marches_cibles: data.competitorAnalysis.marches_cibles || [],
+                entreprises_clientes: data.competitorAnalysis.entreprises_clientes || [],
                 forces_apparentes: data.competitorAnalysis.forces_apparentes || [],
                 faiblesses_potentielles: data.competitorAnalysis.faiblesses_potentielles || [],
                 strategie_communication: data.competitorAnalysis.strategie_communication || "",

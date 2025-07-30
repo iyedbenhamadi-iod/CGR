@@ -49,12 +49,13 @@ export async function POST(request: NextRequest) {
     const competitorClient = new CompetitorAnalysisClient();
     const competitorResult = await withTimeout(
       competitorClient.analyzeCompetitor(requestData.nomConcurrent),
-      120000 // 2 minutes for competitor analysis
+      1200000 // 2 minutes for competitor analysis
     );
     
     console.log('🔍 Résultat analyse concurrent:', {
       success: competitorResult.success,
       hasAnalysis: !!competitorResult.analysis,
+      clientsFound: competitorResult.analysis?.entreprises_clientes?.length || 0,
       error: competitorResult.error
     });
     
@@ -72,14 +73,21 @@ export async function POST(request: NextRequest) {
       synthese: competitorResult.analysis?.synthese_entreprise || competitorResult.analysis?.synthese || '',
       produits_services: competitorResult.analysis?.produits_services || [],
       marches_cibles: competitorResult.analysis?.marches_cibles || [],
+      entreprises_clientes: competitorResult.analysis?.entreprises_clientes || [], // Now properly included
       forces_apparentes: competitorResult.analysis?.forces_apparentes || [],
       faiblesses_potentielles: competitorResult.analysis?.faiblesses_potentielles || [],
       strategie_communication: competitorResult.analysis?.strategie_communication || '',
       sources: competitorResult.analysis?.sources || []
     };
     
-    // Debug: Log the transformed analysis
-    console.log('🔄 Analyse transformée:', JSON.stringify(transformedAnalysis, null, 2));
+    // Debug: Log the transformed analysis with client count
+    console.log('🔄 Analyse transformée:', {
+      nom_entreprise: transformedAnalysis.nom_entreprise,
+      clients_count: transformedAnalysis.entreprises_clientes.length,
+      clients_sample: transformedAnalysis.entreprises_clientes.slice(0, 3),
+      produits_count: transformedAnalysis.produits_services.length,
+      marches_count: transformedAnalysis.marches_cibles.length
+    });
     
     const response = {
       searchType: 'concurrent',
@@ -88,6 +96,12 @@ export async function POST(request: NextRequest) {
       cached: false,
       sources: transformedAnalysis.sources,
       hasCompetitorAnalysis: true,
+      // Enhanced client information for frontend
+      clientsAnalysis: {
+        totalClients: transformedAnalysis.entreprises_clientes.length,
+        clientsList: transformedAnalysis.entreprises_clientes,
+        hasClients: transformedAnalysis.entreprises_clientes.length > 0
+      },
       debug: {
         competitorAnalyzed: requestData.nomConcurrent,
         analysisComplete: true,
@@ -97,6 +111,7 @@ export async function POST(request: NextRequest) {
           synthese: !!transformedAnalysis.synthese,
           produits_services: transformedAnalysis.produits_services.length,
           marches_cibles: transformedAnalysis.marches_cibles.length,
+          entreprises_clientes: transformedAnalysis.entreprises_clientes.length, // Debug client count
           forces_apparentes: transformedAnalysis.forces_apparentes.length,
           faiblesses_potentielles: transformedAnalysis.faiblesses_potentielles.length,
           strategie_communication: !!transformedAnalysis.strategie_communication,
@@ -105,13 +120,22 @@ export async function POST(request: NextRequest) {
       }
     };
     
-    // Debug: Log the final response structure
+    // Debug: Log the final response structure with client info
     console.log('📤 Réponse finale:', {
       searchType: response.searchType,
       hasCompetitorAnalysis: !!response.competitorAnalysis,
       competitorName: response.competitorAnalysis?.nom_entreprise,
+      clientsFound: response.clientsAnalysis.totalClients,
       totalFound: response.totalFound
     });
+    
+    // Log identified clients for business intelligence
+    if (transformedAnalysis.entreprises_clientes.length > 0) {
+      console.log('🎯 CLIENTS IDENTIFIÉS POUR', requestData.nomConcurrent + ':', 
+        transformedAnalysis.entreprises_clientes.join(', '));
+    } else {
+      console.log('⚠️ Aucun client spécifique identifié pour', requestData.nomConcurrent);
+    }
     
     // Save to cache
     await setCachedResult(cacheKey, response, 86400); // 24h cache

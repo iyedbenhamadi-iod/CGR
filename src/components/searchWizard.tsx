@@ -14,7 +14,7 @@ import StepCompetitorContact from "./steps/step-competitor-contact"
 import StepBasicParameters from "./steps/step-basic-parameters"
 import StepCGRContext from "./steps/step-cgr-context"
 import StepAdvancedParameters from "./steps/step-advanced-parameters"
-
+import StepContactroles from "./steps/step-contact-roles"
 interface SearchWizardProps {
   onSearch: (data: FormData) => void
   loading: boolean
@@ -36,6 +36,8 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
     nomEntreprise: "",
     siteWebEntreprise: "",
     nombreResultats: 10,
+    contactRoles: [],
+
   })
 
   const steps = [
@@ -49,7 +51,7 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
       id: "competitor-contact",
       name: "Détails Spécifiques",
       component: StepCompetitorContact,
-      condition: formData.typeRecherche === "concurrent" || formData.typeRecherche === "contacts",
+      condition: formData.typeRecherche === "concurrent" 
     },
     {
       id: "basic-params",
@@ -61,13 +63,18 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
       id: "cgr-context",
       name: "Contexte CGR",
       component: StepCGRContext,
-      condition: true, // Always show CGR context
+      condition: formData.typeRecherche === "brainstorming" || formData.typeRecherche === "entreprises",
     },
     {
       id: "advanced-params",
       name: "Paramètres Avancés",
       component: StepAdvancedParameters,
       condition: formData.typeRecherche === "entreprises",
+    },
+      {id: "competitor-contact-roles",
+      name: "Rôles de Contact Concurrent",
+      component: StepContactroles,
+      condition: formData.typeRecherche === "contacts" ,
     },
   ]
 
