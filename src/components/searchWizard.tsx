@@ -11,10 +11,12 @@ import type { FormData } from "@/lib/form-types"
 // Step Components
 import StepSearchType from "./steps/step-search-type"
 import StepCompetitorContact from "./steps/step-competitor-contact"
+import StepCompetitorIdentification from "./steps/step-competitor-identif"
 import StepBasicParameters from "./steps/step-basic-parameters"
 import StepCGRContext from "./steps/step-cgr-context"
 import StepAdvancedParameters from "./steps/step-advanced-parameters"
 import StepContactroles from "./steps/step-contact-roles"
+
 interface SearchWizardProps {
   onSearch: (data: FormData) => void
   loading: boolean
@@ -37,7 +39,13 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
     siteWebEntreprise: "",
     nombreResultats: 10,
     contactRoles: [],
-
+    // Nouveaux champs pour l'identification de concurrents
+    regionGeographique: "",
+    regionPersonnalisee: "",
+    typeProduitConcurrent: undefined,
+    volumeProductionConcurrent: undefined,
+    nombreConcurrents: 10,
+    criteresAdditionnels: "",
   })
 
   const steps = [
@@ -52,6 +60,12 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
       name: "Détails Spécifiques",
       component: StepCompetitorContact,
       condition: formData.typeRecherche === "concurrent" 
+    },
+    {
+      id: "competitor-identification",
+      name: "Identification Concurrents",
+      component: StepCompetitorIdentification,
+      condition: formData.typeRecherche === "identification_concurrents"
     },
     {
       id: "basic-params",
@@ -71,10 +85,11 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
       component: StepAdvancedParameters,
       condition: formData.typeRecherche === "entreprises",
     },
-      {id: "competitor-contact-roles",
+    {
+      id: "competitor-contact-roles",
       name: "Rôles de Contact Concurrent",
       component: StepContactroles,
-      condition: formData.typeRecherche === "contacts" ,
+      condition: formData.typeRecherche === "contacts",
     },
   ]
 

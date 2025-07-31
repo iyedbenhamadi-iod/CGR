@@ -14,7 +14,13 @@ export interface FormData {
   nomEntreprise: string
   siteWebEntreprise: string
   nombreResultats: number
-  contactRoles: string[] // Nouveau champ pour les rôles de contacts
+  contactRoles: string[] 
+  regionGeographique?: string
+  regionPersonnalisee?: string
+  typeProduitConcurrent?: 'ressort_fil' | 'ressort_feuillard' | 'piece_plastique'
+  volumeProductionConcurrent?: 'petite_serie' | 'moyenne_serie' | 'grande_serie'
+  nombreConcurrents?: number
+  criteresAdditionnels?: string// Nouveau champ pour les rôles de contacts
 }
 
 export interface StepProps {

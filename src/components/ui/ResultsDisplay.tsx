@@ -16,6 +16,13 @@ import {
   Package,
   Award,
   Info,
+  Globe,
+  TrendingDown,
+  FileText,
+  Calendar,
+  MapPin,
+  DollarSign,
+  Briefcase,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -60,6 +67,7 @@ interface Prospect {
   zone_geographique: string
 }
 
+
 interface MarketOpportunity {
   nom_marche: string
   justification: string
@@ -79,17 +87,63 @@ interface CompetitorAnalysis {
   sources: string[]
 }
 
+// Add Competitor interface to match your API response
+interface Competitor {
+  nom_entreprise: string
+  presence_geographique: string[]
+  marches_cibles: string[]
+  taille_estimee: string
+  ca_estime: string
+  publications_recentes: Array<{
+    titre?: string
+    date?: string
+    source?: string
+    url?: string
+  }>
+  actualites_recentes: Array<{
+    titre?: string
+    date?: string
+    source?: string
+    url?: string
+  }>
+  site_web?: string
+  specialites: string[]
+  forces_concurrentielles: string[]
+  positionnement_marche: string
+  contact_info: {
+    telephone?: string
+    email?: string
+    adresse?: string
+  }
+  sources: string[]
+  criteres_correspondants: {
+    region: string
+    produit: string
+    volume: string
+  }
+}
+
 interface ResultsDisplayProps {
   searchType: string
   prospects?: Prospect[]
-  enterprises?: Prospect[] // Add this to handle the enterprises key
+  enterprises?: Prospect[]
   marketOpportunities?: MarketOpportunity[]
-  competitorAnalysis?: CompetitorAnalysis // Use the defined interface
+  competitorAnalysis?: CompetitorAnalysis
+  competitors?: Competitor[] // ✅ Déjà présent
   contacts?: Contact[]
   totalFound: number
   cached: boolean
   sources: string[]
   searchId?: string
+  statistics?: {
+    total_concurrents?: number
+    avec_site_web?: number
+    avec_actualites?: number
+    avec_publications?: number
+    regions_representees?: string[]
+    marches_identifies?: string[]
+    specialites_identifiees?: string[]
+  }
 }
 
 function isValidUrl(url: string): boolean {
@@ -200,6 +254,299 @@ function ContactCard({ contact }: { contact: Contact }) {
             </div>
           )}
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function CompetitorCard({ competitor }: { competitor: Competitor }) {
+  return (
+    <Card className="bg-card border border-border/50 shadow-md hover:shadow-lg transition-shadow duration-200">
+      <CardHeader className="pb-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            <Shield className="text-primary flex-shrink-0 w-8 h-8" />
+            <div>
+              <CardTitle className="text-2xl font-bold text-foreground">{competitor.nom_entreprise}</CardTitle>
+              <CardDescription className="text-muted-foreground mt-1">
+                {competitor.positionnement_marche || "Concurrent identifié"}
+              </CardDescription>
+              {competitor.site_web && isValidUrl(competitor.site_web) && (
+                <a
+                  href={competitor.site_web}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center text-sm text-primary hover:underline mt-2"
+                >
+                  <ExternalLink className="w-4 h-4 mr-1" />
+                  Visiter le site web
+                </a>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <Badge className="bg-red-100 text-red-800 border-red-200">
+              <Shield className="w-4 h-4 mr-1" />
+              Concurrent
+            </Badge>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6 pt-4">
+        {/* Informations générales */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-base text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-primary/70" />
+            <span>Taille: {competitor.taille_estimee}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-primary/70" />
+            <span>CA estimé: {competitor.ca_estime}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-primary/70" />
+            <span>
+              Zones: {competitor.presence_geographique.length > 0 
+                ? competitor.presence_geographique.slice(0, 2).join(", ")
+                : "Non spécifiée"}
+              {competitor.presence_geographique.length > 2 && (
+                <span className="text-xs"> (+{competitor.presence_geographique.length - 2})</span>
+              )}
+            </span>
+          </div>
+        </div>
+
+        <Separator className="bg-border/50" />
+
+        {/* Critères de correspondance */}
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <h5 className="font-semibold text-lg text-amber-800 mb-2 flex items-center gap-2">
+            <Target className="w-5 h-5" />
+            Critères de correspondance
+          </h5>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
+              {competitor.criteres_correspondants.region}
+            </Badge>
+            <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
+              {competitor.criteres_correspondants.produit.replace('_', ' ')}
+            </Badge>
+            <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
+              {competitor.criteres_correspondants.volume.replace('_', ' ')}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Spécialités */}
+        {competitor.specialites && competitor.specialites.length > 0 && (
+          <div>
+            <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+              <Package className="w-5 h-5 text-primary" />
+              Spécialités produits
+            </h5>
+            <div className="flex flex-wrap gap-2">
+              {competitor.specialites.slice(0, 6).map((specialite, idx) => (
+                <Badge key={idx} variant="outline" className="text-sm px-3 py-1 bg-secondary text-secondary-foreground">
+                  {specialite}
+                </Badge>
+              ))}
+              {competitor.specialites.length > 6 && (
+                <Badge variant="outline" className="text-sm px-3 py-1 bg-secondary text-secondary-foreground">
+                  +{competitor.specialites.length - 6} autres
+                </Badge>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Marchés cibles */}
+        {competitor.marches_cibles && competitor.marches_cibles.length > 0 && (
+          <div>
+            <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+              <Target className="w-5 h-5 text-primary" />
+              Marchés cibles
+            </h5>
+            <div className="flex flex-wrap gap-2">
+              {competitor.marches_cibles.slice(0, 5).map((marche, idx) => (
+                <Badge key={idx} className="text-sm bg-primary/10 text-primary px-3 py-1">
+                  {marche}
+                </Badge>
+              ))}
+              {competitor.marches_cibles.length > 5 && (
+                <Badge className="text-sm bg-primary/10 text-primary px-3 py-1">
+                  +{competitor.marches_cibles.length - 5} autres
+                </Badge>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Forces concurrentielles */}
+        {competitor.forces_concurrentielles && competitor.forces_concurrentielles.length > 0 && (
+          <div>
+            <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+              <Award className="w-5 h-5 text-green-600" />
+              Forces concurrentielles
+            </h5>
+            <ul className="space-y-2">
+              {competitor.forces_concurrentielles.slice(0, 4).map((force, idx) => (
+                <li key={idx} className="text-base text-muted-foreground flex items-start gap-2">
+                  <CheckCircle className="w-4 h-4 text-green-500 mt-1 flex-shrink-0" />
+                  {force}
+                </li>
+              ))}
+              {competitor.forces_concurrentielles.length > 4 && (
+                <li className="text-sm text-muted-foreground italic">
+                  +{competitor.forces_concurrentielles.length - 4} autres forces identifiées
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {/* Présence géographique complète */}
+        {competitor.presence_geographique && competitor.presence_geographique.length > 2 && (
+          <div>
+            <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+              <Globe className="w-5 h-5 text-primary" />
+              Présence géographique
+            </h5>
+            <div className="flex flex-wrap gap-2">
+              {competitor.presence_geographique.map((region, idx) => (
+                <Badge key={idx} variant="outline" className="text-sm px-3 py-1 bg-blue-50 text-blue-700 border-blue-200">
+                  {region}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Actualités récentes */}
+        {competitor.actualites_recentes && competitor.actualites_recentes.length > 0 && (
+          <div>
+            <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary" />
+              Actualités récentes ({competitor.actualites_recentes.length})
+            </h5>
+            <div className="space-y-3">
+              {competitor.actualites_recentes.slice(0, 3).map((actualite, idx) => (
+                <div key={idx} className="border-l-4 border-blue-200 pl-4 py-2 bg-blue-50/30">
+                  <h6 className="font-medium text-foreground text-sm">
+                    {actualite.titre || "Actualité récente"}
+                  </h6>
+                  {actualite.date && (
+                    <p className="text-xs text-muted-foreground mt-1">{actualite.date}</p>
+                  )}
+                  {actualite.source && (
+                    <p className="text-xs text-blue-600 mt-1">Source: {actualite.source}</p>
+                  )}
+                </div>
+              ))}
+              {competitor.actualites_recentes.length > 3 && (
+                <p className="text-sm text-muted-foreground italic">
+                  +{competitor.actualites_recentes.length - 3} autres actualités
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Publications récentes */}
+        {competitor.publications_recentes && competitor.publications_recentes.length > 0 && (
+          <div>
+            <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              Publications récentes ({competitor.publications_recentes.length})
+            </h5>
+            <div className="space-y-3">
+              {competitor.publications_recentes.slice(0, 3).map((publication, idx) => (
+                <div key={idx} className="border-l-4 border-green-200 pl-4 py-2 bg-green-50/30">
+                  <h6 className="font-medium text-foreground text-sm">
+                    {publication.titre || "Publication récente"}
+                  </h6>
+                  {publication.date && (
+                    <p className="text-xs text-muted-foreground mt-1">{publication.date}</p>
+                  )}
+                  {publication.url && isValidUrl(publication.url) && (
+                    <a
+                      href={publication.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center text-xs text-green-600 hover:underline mt-1"
+                    >
+                      Lire <ExternalLink className="w-3 h-3 ml-1" />
+                    </a>
+                  )}
+                </div>
+              ))}
+              {competitor.publications_recentes.length > 3 && (
+                <p className="text-sm text-muted-foreground italic">
+                  +{competitor.publications_recentes.length - 3} autres publications
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Informations de contact */}
+        {competitor.contact_info && Object.keys(competitor.contact_info).length > 0 && (
+          <div className="bg-accent/5 rounded-lg p-4 border border-accent/20">
+            <h5 className="font-semibold text-lg text-foreground mb-3 flex items-center gap-2">
+              <Mail className="w-5 h-5 text-primary" />
+              Informations de contact
+            </h5>
+            <div className="space-y-2">
+              {competitor.contact_info.telephone && (
+                <div className="flex items-center gap-3">
+                  <Phone className="text-primary" size={16} />
+                  <span className="text-sm text-foreground">{competitor.contact_info.telephone}</span>
+                </div>
+              )}
+              {competitor.contact_info.email && (
+                <div className="flex items-center gap-3">
+                  <Mail className="text-primary" size={16} />
+                  <a href={`mailto:${competitor.contact_info.email}`} className="text-sm text-primary hover:underline">
+                    {competitor.contact_info.email}
+                  </a>
+                </div>
+              )}
+              {competitor.contact_info.adresse && (
+                <div className="flex items-center gap-3">
+                  <MapPin className="text-primary" size={16} />
+                  <span className="text-sm text-foreground">{competitor.contact_info.adresse}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Sources */}
+        {competitor.sources && competitor.sources.length > 0 && (
+          <div className="pt-4 border-t border-border/50">
+            <div className="flex flex-wrap gap-2">
+              <span className="text-sm text-muted-foreground font-medium">Sources :</span>
+              {competitor.sources
+                .filter((source) => isValidUrl(source))
+                .slice(0, 3)
+                .map((source, idx) => (
+                  <Button
+                    key={idx}
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs bg-background text-primary hover:bg-primary/5 hover:text-primary border-primary/20"
+                  >
+                    <ExternalLink className="w-3 h-3 mr-1" />
+                    {getHostname(source)}
+                  </Button>
+                ))}
+              {competitor.sources.filter((source) => isValidUrl(source)).length > 3 && (
+                <Badge variant="outline" className="text-xs bg-background text-muted-foreground">
+                  +{competitor.sources.filter((source) => isValidUrl(source)).length - 3} autres
+                </Badge>
+              )}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -380,24 +727,51 @@ export default function ResultsDisplay({
   enterprises,
   marketOpportunities,
   competitorAnalysis,
+  competitors,
   contacts,
   totalFound,
   cached,
   sources,
+  statistics,
 }: ResultsDisplayProps) {
-  const displayProspects = prospects || enterprises || []
 
-  if (totalFound === 0) {
-    return (
-      <Card className="border-yellow-400 bg-yellow-50 shadow-lg rounded-xl">
-        <CardContent className="p-8 text-center">
-          <AlertCircle className="w-16 h-16 text-yellow-600 mx-auto mb-6" />
-          <p className="text-yellow-800 font-bold text-xl">Aucun résultat trouvé</p>
-          <p className="text-yellow-700 text-base mt-2">Veuillez ajuster vos critères de recherche et réessayer.</p>
-        </CardContent>
-      </Card>
-    )
+// Replace the variables assignment and hasAnyResults function with this:
+
+const displayProspects = prospects || enterprises || []
+const displayCompetitors = competitors || []
+
+// Add this debug logging right after the variable assignments:
+console.log('🔍 ResultsDisplay debug info:', {
+  searchType,
+  rawCompetitors: competitors,
+  rawProspects: prospects,
+  rawEnterprises: enterprises,
+  displayCompetitors: displayCompetitors.length,
+  displayProspects: displayProspects.length,
+  competitorAnalysis: !!competitorAnalysis,
+  marketOpportunities: marketOpportunities?.length || 0,
+  contacts: contacts?.length || 0,
+  totalFound
+});
+
+const hasAnyResults = () => {
+  switch (searchType) {
+    case 'competitor-identification':
+      const hasCompetitors = displayCompetitors.length > 0;
+      console.log('🎯 Competitor identification check:', { hasCompetitors, count: displayCompetitors.length, totalFound });
+      return hasCompetitors || totalFound > 0;
+    case 'concurrent':
+      return competitorAnalysis != null
+    case 'brainstorming':
+      return marketOpportunities && marketOpportunities.length > 0
+    case 'contacts':
+      return contacts && contacts.length > 0
+    case 'entreprises':
+    default:
+      return displayProspects.length > 0
   }
+}
+
 
   return (
     <div className="space-y-8 w-full max-w-5xl mx-auto">
@@ -408,7 +782,7 @@ export default function ResultsDisplay({
             <div>
               <h3 className="font-bold text-2xl text-primary flex items-center gap-3">
                 <Target className="w-6 h-6" />
-                {totalFound} Résultat{totalFound > 1 ? "s" : ""} Trouvé{totalFound > 1 ? "s" : ""}
+{totalFound || (displayProspects.length + displayCompetitors.length)} Résultat{(totalFound || (displayProspects.length + displayCompetitors.length)) > 1 ? "s" : ""} Trouvé{(totalFound || (displayProspects.length + displayCompetitors.length)) > 1 ? "s" : ""}
               </h3>
               <p className="text-base text-muted-foreground mt-2 flex items-center gap-2">
                 {cached ? (
@@ -431,6 +805,7 @@ export default function ResultsDisplay({
                   Analyse de: <span className="font-medium">{competitorAnalysis.nom_entreprise}</span>
                 </p>
               )}
+
               {searchType === "entreprises" && (
                 <p className="text-sm text-muted-foreground mt-1">
                   <span className="font-medium">{displayProspects.length}</span> entreprise
@@ -441,6 +816,93 @@ export default function ResultsDisplay({
           </div>
         </CardContent>
       </Card>
+
+      {/* Statistics for competitor identification */}
+      {searchType === "competitor-identification" && statistics && (
+        <Card className="bg-accent/5 border border-accent/20 shadow-md rounded-xl">
+          <CardContent className="p-6">
+            <h4 className="font-bold text-xl text-foreground mb-4 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-accent" />
+              Statistiques de l'analyse concurrentielle
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-primary">{statistics.total_concurrents || 0}</div>
+                <div className="text-sm text-muted-foreground">Concurrents identifiés</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">{statistics.avec_site_web || 0}</div>
+                <div className="text-sm text-muted-foreground">Avec site web</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{statistics.avec_actualites || 0}</div>
+                <div className="text-sm text-muted-foreground">Avec actualités</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-600">{statistics.avec_publications || 0}</div>
+                <div className="text-sm text-muted-foreground">Avec publications</div>
+              </div>
+            </div>
+            
+            {/* Additional statistics */}
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+              {statistics.regions_representees && statistics.regions_representees.length > 0 && (
+                <div>
+                  <h5 className="font-semibold text-sm text-foreground mb-2">Régions représentées</h5>
+                  <div className="flex flex-wrap gap-1">
+                    {statistics.regions_representees.slice(0, 5).map((region, idx) => (
+                      <Badge key={idx} variant="outline" className="text-xs">
+                        {region}
+                      </Badge>
+                    ))}
+                    {statistics.regions_representees.length > 5 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{statistics.regions_representees.length - 5}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {statistics.marches_identifies && statistics.marches_identifies.length > 0 && (
+                <div>
+                  <h5 className="font-semibold text-sm text-foreground mb-2">Marchés identifiés</h5>
+                  <div className="flex flex-wrap gap-1">
+                    {statistics.marches_identifies.slice(0, 5).map((marche, idx) => (
+                      <Badge key={idx} variant="outline" className="text-xs bg-primary/10 text-primary">
+                        {marche}
+                      </Badge>
+                    ))}
+                    {statistics.marches_identifies.length > 5 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{statistics.marches_identifies.length - 5}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {statistics.specialites_identifiees && statistics.specialites_identifiees.length > 0 && (
+                <div>
+                  <h5 className="font-semibold text-sm text-foreground mb-2">Spécialités identifiées</h5>
+                  <div className="flex flex-wrap gap-1">
+                    {statistics.specialites_identifiees.slice(0, 5).map((specialite, idx) => (
+                      <Badge key={idx} variant="outline" className="text-xs bg-secondary">
+                        {specialite}
+                      </Badge>
+                    ))}
+                    {statistics.specialites_identifiees.length > 5 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{statistics.specialites_identifiees.length - 5}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Affichage selon le type de recherche */}
       {searchType === "brainstorming" && marketOpportunities && marketOpportunities.length > 0 && (
@@ -704,6 +1166,19 @@ export default function ResultsDisplay({
         </div>
       )}
 
+{searchType === "competitor-identification" && displayCompetitors.length > 0 && (
+  <div className="space-y-6">
+    <h3 className="text-2xl font-bold text-foreground flex items-center gap-3">
+      <Shield className="w-7 h-7 text-red-600" />
+      Concurrents identifiés ({displayCompetitors.length})
+    </h3>
+    <div className="grid gap-6">
+      {displayCompetitors.map((competitor, index) => (
+        <CompetitorCard key={index} competitor={competitor} />
+      ))}
+    </div>
+  </div>
+)}
       {/* Footer sources globales */}
       {sources && sources.length > 0 && (
         <Card className="bg-card border border-border/50 shadow-md rounded-xl">

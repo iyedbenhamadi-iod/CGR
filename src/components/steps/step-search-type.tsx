@@ -1,5 +1,5 @@
 "use client"
-import { Building2, Users, Target, Search } from "lucide-react"
+import { Building2, Users, Target, Search, Radar } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { StepProps } from "@/lib/form-types"
 
@@ -13,6 +13,8 @@ const getSearchTypeIcon = (type: string) => {
       return <Building2 className="w-6 h-6" />
     case "contacts":
       return <Search className="w-6 h-6" />
+    case "identification_concurrents":
+      return <Radar className="w-6 h-6" />
     default:
       return <Search className="w-6 h-6" />
   }
@@ -26,7 +28,7 @@ export default function StepSearchType({ formData, setFormData }: StepProps) {
         Sélectionnez l'objectif principal de votre prospection pour affiner les paramètres.
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {[
           {
             value: "brainstorming",
@@ -37,6 +39,11 @@ export default function StepSearchType({ formData, setFormData }: StepProps) {
             value: "concurrent",
             label: "Analyse d'un concurrent",
             desc: "Obtenir des informations détaillées sur la stratégie et les clients d'un concurrent.",
+          },
+          {
+            value: "identification_concurrents",
+            label: "Identification de concurrents",
+            desc: "Découvrir des concurrents par région, produit et volume de production.",
           },
           {
             value: "entreprises",
@@ -53,7 +60,7 @@ export default function StepSearchType({ formData, setFormData }: StepProps) {
             key={type.value}
             className={cn(
               "p-6 rounded-xl cursor-pointer transition-all duration-300 ease-in-out border-2",
-              "flex items-start gap-5 group",
+              "flex flex-col items-start gap-4 group min-h-[160px]",
               formData.typeRecherche === type.value
                 ? "border-primary bg-primary text-primary-foreground shadow-lg transform scale-[1.02]"
                 : "border-border bg-background hover:border-primary/50 hover:shadow-md",
@@ -70,10 +77,10 @@ export default function StepSearchType({ formData, setFormData }: StepProps) {
             >
               {getSearchTypeIcon(type.value)}
             </div>
-            <div>
+            <div className="flex-1">
               <div
                 className={cn(
-                  "font-semibold text-xl",
+                  "font-semibold text-lg leading-tight mb-2",
                   formData.typeRecherche === type.value ? "text-primary-foreground" : "text-foreground",
                 )}
               >
@@ -81,7 +88,7 @@ export default function StepSearchType({ formData, setFormData }: StepProps) {
               </div>
               <div
                 className={cn(
-                  "text-base mt-1",
+                  "text-sm leading-relaxed",
                   formData.typeRecherche === type.value ? "text-primary-foreground/90" : "text-muted-foreground",
                 )}
               >
