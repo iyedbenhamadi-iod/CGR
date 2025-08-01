@@ -38,6 +38,18 @@ export default function StepBasicParameters({ formData, setFormData }: StepProps
             </div>
           ))}
         </div>
+        <div className="space-y-4">
+  <Label htmlFor="secteurActiviteLibre" className="text-lg font-medium text-foreground">
+    Autre secteur d'activité (précisez)
+  </Label>
+  <Input
+    id="secteurActiviteLibre"
+    value={formData.secteurActiviteLibre}
+    onChange={(e) => setFormData((prev) => ({ ...prev, secteurActiviteLibre: e.target.value }))}
+    placeholder="Ex: Nautisme, Mobilier, Optique..."
+    className="h-12 text-base border-border focus:border-primary focus:ring-primary"
+  />
+</div>
       </div>
 
       {/* Zone géographique */}
@@ -57,6 +69,18 @@ export default function StepBasicParameters({ formData, setFormData }: StepProps
             </div>
           ))}
         </div>
+        <div className="space-y-4">
+  <Label htmlFor="zoneGeographiqueLibre" className="text-lg font-medium text-foreground">
+    Autre zone géographique (précisez)
+  </Label>
+  <Input
+    id="zoneGeographiqueLibre"
+    value={formData.zoneGeographiqueLibre}
+    onChange={(e) => setFormData((prev) => ({ ...prev, zoneGeographiqueLibre: e.target.value }))}
+    placeholder="Ex: Allemagne, Italie, Espagne..."
+    className="h-12 text-base border-border focus:border-primary focus:ring-primary"
+  />
+</div>
       </div>
 
       {/* Taille entreprise et mots-clés */}

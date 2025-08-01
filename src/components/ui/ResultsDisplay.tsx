@@ -92,7 +92,7 @@ interface Competitor {
   nom_entreprise: string
   presence_geographique: string[]
   marches_cibles: string[]
-  taille_estimee: string
+  taille_estimee: string  // Changed from taille_estimee
   ca_estime: string
   publications_recentes: Array<{
     titre?: string
@@ -107,7 +107,7 @@ interface Competitor {
     url?: string
   }>
   site_web?: string
-  specialites: string[]
+  specialites: string[]  // This is the correct field name your API returns
   forces_concurrentielles: string[]
   positionnement_marche: string
   contact_info: {
@@ -563,7 +563,12 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
               <CardTitle className="text-2xl font-bold text-foreground">{prospect.nom_entreprise}</CardTitle>
               <CardDescription className="text-muted-foreground mt-1">{prospect.description_activite}</CardDescription>
               {prospect.site_web && isValidUrl(prospect.site_web) && (
-                <Button variant="link" size="sm" className="h-auto p-0 text-sm mt-2 text-primary hover:underline">
+                <Button 
+                  variant="link" 
+                  size="sm" 
+                  className="h-auto p-0 text-sm mt-2 text-primary hover:underline"
+                  onClick={() => window.open(prospect.site_web, '_blank', 'noopener,noreferrer')}
+                >
                   <ExternalLink className="w-4 h-4 mr-1" />
                   Visiter le site web
                 </Button>
@@ -703,6 +708,7 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
                     variant="outline"
                     size="sm"
                     className="h-8 text-xs bg-background text-primary hover:bg-primary/5 hover:text-primary border-primary/20"
+                    onClick={() => window.open(source, '_blank', 'noopener,noreferrer')}
                   >
                     <ExternalLink className="w-3 h-3 mr-1" />
                     {getHostname(source)}
@@ -720,7 +726,6 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
     </Card>
   )
 }
-
 export default function ResultsDisplay({
   searchType,
   prospects,
@@ -737,29 +742,48 @@ export default function ResultsDisplay({
 
 // Replace the variables assignment and hasAnyResults function with this:
 
-const displayProspects = prospects || enterprises || []
-const displayCompetitors = competitors || []
+// CRITICAL FIX: The issue is in the data assignment, not the logic
+// Replace the variable assignments at the top with this:
 
-// Add this debug logging right after the variable assignments:
-console.log('🔍 ResultsDisplay debug info:', {
+const displayProspects = prospects || enterprises || []
+const displayCompetitors = competitors || [] // This should contain the 10 competitors
+
+// Add comprehensive debugging right after variable assignments:
+console.log('🔍 ResultsDisplay raw props:', {
   searchType,
   rawCompetitors: competitors,
+  rawCompetitorsLength: competitors?.length || 0,
   rawProspects: prospects,
   rawEnterprises: enterprises,
+  totalFound,
+  propsReceived: Object.keys({
+    searchType, prospects, enterprises, marketOpportunities, 
+    competitorAnalysis, competitors, contacts, totalFound, cached, sources
+  }).filter(key => arguments[0][key] !== undefined)
+});
+
+console.log('🔍 ResultsDisplay processed data:', {
   displayCompetitors: displayCompetitors.length,
   displayProspects: displayProspects.length,
   competitorAnalysis: !!competitorAnalysis,
   marketOpportunities: marketOpportunities?.length || 0,
-  contacts: contacts?.length || 0,
-  totalFound
+  contacts: contacts?.length || 0
 });
 
+// Fixed hasAnyResults function:
 const hasAnyResults = () => {
   switch (searchType) {
     case 'competitor-identification':
+    case 'identification_concurrents':
       const hasCompetitors = displayCompetitors.length > 0;
-      console.log('🎯 Competitor identification check:', { hasCompetitors, count: displayCompetitors.length, totalFound });
-      return hasCompetitors || totalFound > 0;
+      console.log('🎯 Competitor identification check:', { 
+        hasCompetitors, 
+        count: displayCompetitors.length, 
+        totalFound,
+        rawCompetitorsExists: !!competitors,
+        rawCompetitorsLength: competitors?.length || 0
+      });
+      return hasCompetitors;
     case 'concurrent':
       return competitorAnalysis != null
     case 'brainstorming':
@@ -772,6 +796,34 @@ const hasAnyResults = () => {
   }
 }
 
+// Debug the results check:
+const debugHasResults = hasAnyResults();
+console.log('🚨 hasAnyResults result:', debugHasResults, 'for searchType:', searchType);
+
+// EMERGENCY FALLBACK: If totalFound > 0 but arrays are empty, there's a data mapping issue
+if (!debugHasResults && totalFound > 0) {
+  console.log('🚨 CRITICAL: totalFound > 0 but no display arrays populated!');
+  console.log('🚨 This indicates a data structure mismatch between API and component');
+  
+  return (
+    <div className="space-y-8 w-full max-w-5xl mx-auto">
+      <Card className="border-red-400 bg-red-50 shadow-lg rounded-xl">
+        <CardContent className="p-8 text-center">
+          <AlertCircle className="w-16 h-16 text-red-600 mx-auto mb-6" />
+          <p className="text-red-800 font-bold text-xl">Erreur de structure de données</p>
+          <p className="text-red-700 text-base mt-2">
+            Les données ont été trouvées ({totalFound} résultats) mais ne peuvent pas être affichées.
+          </p>
+          <div className="mt-4 text-sm text-red-600 space-y-1">
+            <div>Debug: competitors={displayCompetitors.length}, prospects={displayProspects.length}, total={totalFound}</div>
+            <div>Raw competitors: {competitors?.length || 0}</div>
+            <div>Search type: {searchType}</div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
   return (
     <div className="space-y-8 w-full max-w-5xl mx-auto">

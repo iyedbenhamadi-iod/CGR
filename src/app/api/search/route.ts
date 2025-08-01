@@ -17,6 +17,8 @@ interface EnhancedSearchData {
   siteWebEntreprise?: string;
   includeMarketAnalysis?: boolean;
   includeCompetitorAnalysis?: boolean;
+  secteurActiviteLibre?: string;
+  zoneGeographiqueLibre?: string;
   competitorNames?: string[];
   posteRecherche?: string;
   secteurActivite?: string;
@@ -104,17 +106,18 @@ class RequestQueue {
 // Generate user-specific request ID
 function generateRequestId(searchData: EnhancedSearchData, userId?: string): string {
   const key = {
-    userId: userId || 'anonymous', // Include user ID in the key
-    timestamp: Date.now(), // Add timestamp to make each request unique
+    userId: userId || 'anonymous',
+    timestamp: Date.now(),
     type: searchData.typeRecherche,
     sectors: searchData.secteursActivite?.sort(),
+    secteurLibre: searchData.secteurActiviteLibre, // Nouveau
     zone: searchData.zoneGeographique?.sort(),
+    zoneLibre: searchData.zoneGeographiqueLibre, // Nouveau
     size: searchData.tailleEntreprise,
     keywords: searchData.motsCles,
     products: searchData.produitsCGR?.sort(),
     competitor: searchData.nomConcurrent,
     company: searchData.nomEntreprise,
-    // Add competitor identification fields
     regionGeo: searchData.regionGeographique,
     regionCustom: searchData.regionPersonnalisee,
     productType: searchData.typeProduitConcurrent,
@@ -319,7 +322,11 @@ async function handleBrainstormingSearch(searchData: EnhancedSearchData, request
   const baseUrl = getBaseUrl(request);
   const response = await makeApiCall(`${baseUrl}/api/brainstorming`, {
     secteursActivite: searchData.secteursActivite,
+        secteurActiviteLibre: searchData.secteurActiviteLibre, // Nouveau
+
     zoneGeographique: searchData.zoneGeographique,
+        zoneGeographiqueLibre: searchData.zoneGeographiqueLibre, // Nouveau
+
     produitsCGR: searchData.produitsCGR,
     clientsExclure: searchData.clientsExclure
   });
@@ -406,10 +413,23 @@ async function handleCompetitorIdentificationSearch(searchData: EnhancedSearchDa
 }
 
 async function handleEnterpriseSearch(searchData: EnhancedSearchData, request: NextRequest) {
+   const hasPredefinedSectors = searchData.secteursActivite && searchData.secteursActivite.length > 0;
+    const hasFreeTextSector = searchData.secteurActiviteLibre && searchData.secteurActiviteLibre.trim() !== '';
+
+    if (!hasPredefinedSectors && !hasFreeTextSector) {
+        // Throw a specific error that can be caught and handled as a 400 Bad Request.
+        throw new Error("Validation failed: Au moins un secteur d'activité (prédéfini ou libre) est requis.");
+    }
   const baseUrl = getBaseUrl(request);
+
   const response = await makeApiCall(`${baseUrl}/api/enterprises`, {
+    
     secteursActivite: searchData.secteursActivite,
+    secteurActiviteLibre: searchData.secteurActiviteLibre, // Nouveau
+
     zoneGeographique: searchData.zoneGeographique,
+        zoneGeographiqueLibre: searchData.zoneGeographiqueLibre, // Nouveau
+
     tailleEntreprise: searchData.tailleEntreprise,
     motsCles: searchData.motsCles,
     produitsCGR: searchData.produitsCGR,

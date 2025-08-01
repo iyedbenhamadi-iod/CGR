@@ -99,6 +99,18 @@ export default function StepCompetitorContact({ formData, setFormData }: StepPro
                   className="mt-1 h-12"
                 />
               </div>
+              <div>
+  <Label htmlFor="zoneGeographique" className="text-base font-medium">
+    Zone géographique
+  </Label>
+  <Input
+    id="zoneGeographique"
+    value={formData.location}
+    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+    placeholder="Ex: France, Paris, Lyon, Europe"
+    className="mt-1 h-12"
+  />
+</div>
             </div>
           </CardContent>
         </Card>

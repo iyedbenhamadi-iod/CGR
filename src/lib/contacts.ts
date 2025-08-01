@@ -26,6 +26,8 @@ interface ContactSearchRequest {
   contactRoles?: string[]; // Nouveau champ pour les rôles spécifiques
   siteWebEntreprise?: string;
   nombreResultats?: number;
+    location?: string; // Add this line
+
 }
 
 interface ContactSearchResult {
@@ -310,7 +312,9 @@ export class ContactSearchClient {
       posteRecherche,
       contactRoles,
       siteWebEntreprise,
-      nombreResultats = 25
+      nombreResultats = 25,
+      location, // Add this
+
     } = request;
 
     // 🔧 SIMPLIFIED: Start with minimal, valid parameters
@@ -344,6 +348,10 @@ export class ContactSearchClient {
     apolloRequest.person_seniorities = ["manager", "director", "c_level"];
 
     console.log('🔧 Simplified Apollo request:', JSON.stringify(apolloRequest, null, 2));
+     if (location) {
+    apolloRequest.person_locations = [location];
+    console.log('🌍 Searching with geographic filter:', location);
+  }
     return apolloRequest;
   }
 

@@ -39,8 +39,10 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
     siteWebEntreprise: "",
     nombreResultats: 10,
     contactRoles: [],
+    secteurActiviteLibre: '',
+   zoneGeographiqueLibre: '',
     // Nouveaux champs pour l'identification de concurrents
-    regionGeographique: "",
+  
     regionPersonnalisee: "",
     typeProduitConcurrent: undefined,
     volumeProductionConcurrent: undefined,

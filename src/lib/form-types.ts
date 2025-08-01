@@ -4,6 +4,8 @@ export interface FormData {
   typeRecherche: string
   secteursActivite: string[]
   zoneGeographique: string[]
+  secteurActiviteLibre: string // Nouveau champ libre
+  zoneGeographiqueLibre: string // Nouveau champ libre
   tailleEntreprise: string
   motsCles: string
   produitsCGR: string[]
@@ -15,7 +17,7 @@ export interface FormData {
   siteWebEntreprise: string
   nombreResultats: number
   contactRoles: string[] 
-  regionGeographique?: string
+  location?: string
   regionPersonnalisee?: string
   typeProduitConcurrent?: 'ressort_fil' | 'ressort_feuillard' | 'piece_plastique'
   volumeProductionConcurrent?: 'petite_serie' | 'moyenne_serie' | 'grande_serie'

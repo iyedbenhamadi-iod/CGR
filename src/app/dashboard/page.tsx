@@ -56,6 +56,16 @@ export default function Dashboard() {
       sources: data.sources || [],
       searchId: data.searchId || undefined, // Pass searchId if available
     }
+
+    // Debug log to understand the data structure
+    console.log("🔍 Transform API Response - Input data:", {
+      searchType: baseResponse.searchType,
+      dataKeys: Object.keys(data),
+      competitors: data.competitors?.length || 0,
+      prospects: data.prospects?.length || 0,
+      totalFound: baseResponse.totalFound
+    })
+
     switch (baseResponse.searchType) {
       case "brainstorming":
         return {
@@ -105,34 +115,82 @@ export default function Dashboard() {
           searchCriteria: data.searchCriteria || {},
           hasContacts: data.hasContacts || false,
         }
+      case "competitor-identification":
+      case "identification_concurrents":
+        // FIXED: Handle competitor identification properly
+        console.log("🔧 Transforming competitor-identification data:", {
+          competitors: data.competitors?.length || 0,
+          statistics: data.statistics || {},
+          hasCompetitors: data.hasCompetitors
+        })
+        return {
+          ...baseResponse,
+          competitors: data.competitors?.map((competitor: any) => ({
+            nom_entreprise: competitor.nom_entreprise || "",
+            presence_geographique: Array.isArray(competitor.presence_geographique) 
+              ? competitor.presence_geographique 
+              : (competitor.presence_geographique ? [competitor.presence_geographique] : []),
+            marches_cibles: Array.isArray(competitor.marches_cibles) 
+              ? competitor.marches_cibles 
+              : (competitor.marches_cibles ? [competitor.marches_cibles] : []),
+            taille_estimee: competitor.taille_estimee || competitor.taille_entreprise || "Non spécifiée",
+            ca_estime: competitor.ca_estime || "Non communiqué",
+            publications_recentes: Array.isArray(competitor.publications_recentes) 
+              ? competitor.publications_recentes 
+              : [],
+            actualites_recentes: Array.isArray(competitor.actualites_recentes) 
+              ? competitor.actualites_recentes 
+              : [],
+            site_web: competitor.site_web || undefined,
+            specialites: Array.isArray(competitor.specialites) 
+              ? competitor.specialites 
+              : (Array.isArray(competitor.specialites_produits) 
+                  ? competitor.specialites_produits 
+                  : []),
+            forces_concurrentielles: Array.isArray(competitor.forces_concurrentielles) 
+              ? competitor.forces_concurrentielles 
+              : [],
+            positionnement_marche: competitor.positionnement_marche || "",
+            contact_info: competitor.contact_info || {},
+            sources: Array.isArray(competitor.sources) ? competitor.sources : [],
+            criteres_correspondants: competitor.criteres_correspondants || {
+              region: "Non spécifiée",
+              produit: "Non spécifié",
+              volume: "Non spécifié"
+            }
+          })) || [],
+          statistics: data.statistics || {},
+          hasCompetitors: data.hasCompetitors || false,
+          searchCriteria: data.searchCriteria || {},
+        }
       case "entreprises":
         return {
           ...baseResponse,
           prospects:
             data.prospects?.map((prospect: any) => ({
-              nom_entreprise: prospect.company,
-              site_web: prospect.website || "",
-              description_activite: prospect.sector || "",
-              produits_entreprise: prospect.cgrData?.produits_entreprise || [],
+              nom_entreprise: prospect.company || prospect.nom_entreprise,
+              site_web: prospect.website || prospect.site_web || "",
+              description_activite: prospect.sector || prospect.description_activite || "",
+              produits_entreprise: prospect.cgrData?.produits_entreprise || prospect.produits_entreprise || [],
               potentiel_cgr: {
                 produits_cibles_chez_le_prospect: prospect.cgrData?.produits_cibles_chez_le_prospect || [],
                 produits_cgr_a_proposer: prospect.cgrData?.produits_cgr_a_proposer || [],
-                argumentaire_approche: prospect.reason || "",
+                argumentaire_approche: prospect.reason || prospect.potentiel_cgr?.argumentaire_approche || "",
               },
-              fournisseur_actuel_estimation: prospect.cgrData?.fournisseur_actuel_estimation || "",
+              fournisseur_actuel_estimation: prospect.cgrData?.fournisseur_actuel_estimation || prospect.fournisseur_actuel_estimation || "",
               contacts:
                 prospect.contacts?.map((contact: any) => ({
-                  nom: contact.name?.split(" ").pop() || "",
-                  prenom: contact.name?.split(" ").slice(0, -1).join(" ") || contact.name || "",
-                  poste: contact.position || "",
+                  nom: contact.name?.split(" ").pop() || contact.nom || "",
+                  prenom: contact.name?.split(" ").slice(0, -1).join(" ") || contact.prenom || contact.name || "",
+                  poste: contact.position || contact.poste || "",
                   email: contact.email || undefined,
                   phone: contact.phone || undefined,
-                  linkedin_url: contact.linkedin || undefined,
+                  linkedin_url: contact.linkedin || contact.linkedin_url || undefined,
                   verified: contact.verified || false,
                 })) || [],
               score: prospect.score || 0,
               sources: prospect.sources || [],
-              taille_entreprise: prospect.size || "Non spécifiée",
+              taille_entreprise: prospect.size || prospect.taille_entreprise || "Non spécifiée",
               volume_pieces_estime: prospect.volume_pieces_estime || "Non spécifié",
               zone_geographique: prospect.zone_geographique || "Non spécifiée",
             })) || [],
@@ -142,7 +200,17 @@ export default function Dashboard() {
         }
       default:
         console.warn("Unknown search type:", baseResponse.searchType)
-        return baseResponse
+        // Return the base response with all possible data fields
+        return {
+          ...baseResponse,
+          // Try to map common fields that might be present
+          competitors: data.competitors || [],
+          prospects: data.prospects || [],
+          contacts: data.contacts || [],
+          marketOpportunities: data.marketOpportunities || [],
+          competitorAnalysis: data.competitorAnalysis || null,
+          statistics: data.statistics || {},
+        }
     }
   }
 

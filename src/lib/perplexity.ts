@@ -28,6 +28,8 @@ interface EnterpriseSearchData {
   usinesCGR: string[];
   nombreResultats: number;
   typeRecherche?: string;
+  secteurActiviteLibre?: string;
+  zoneGeographiqueLibre?: string;
 }
 
 export class PerplexityEnterpriseClient {
@@ -209,8 +211,10 @@ Pour chaque entreprise potentielle, tu DOIS rechercher:
       ...(data.clientsExclure ? data.clientsExclure.split('\n').filter(Boolean) : [])
     ];
 
-    const secteurPrincipal = data.secteursActivite[0] || 'Industriel';
-    const zoneGeo = data.zoneGeographique.length > 0 ? data.zoneGeographique.join(', ') : 'France et Europe';
+    const secteurPrincipal = data.secteursActivite[0] || data.secteurActiviteLibre || 'Industriel';
+    const zoneGeo = data.zoneGeographique.length > 0 
+      ? data.zoneGeographique.join(', ') + (data.zoneGeographiqueLibre ? `, ${data.zoneGeographiqueLibre}` : '')
+      : data.zoneGeographiqueLibre || 'France et Europe';
     const tailleEntreprise = data.tailleEntreprise || 'Toutes tailles';
     const volumePieces = data.volumePieces && data.volumePieces.length > 0 ? data.volumePieces[0] : 50000;
     const produitsCGRSpecifiques = data.produitsCGR.length > 0 ? data.produitsCGR : ['Ressorts fil'];
