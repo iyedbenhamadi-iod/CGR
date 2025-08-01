@@ -51,7 +51,7 @@ export default function StepCompetitorIdentification({ formData, setFormData }: 
           <div className="space-y-2">
             <Label className="text-sm font-medium text-muted-foreground">Région prédéfinie</Label>
             <Select
-              value={formData.regionGeographique || ""}
+              value={formData.location || ""}
               onValueChange={(value) => setFormData((prev) => ({ 
                 ...prev, 
                 regionGeographique: value,
