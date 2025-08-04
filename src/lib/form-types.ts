@@ -9,6 +9,7 @@ export interface FormData {
   tailleEntreprise: string
   motsCles: string
   produitsCGR: string[]
+  autresProduits?: string // Nouveau champ pour les autres produits
   volumePieces: number[]
   clientsExclure: string
   usinesCGR: string[]

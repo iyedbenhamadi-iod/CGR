@@ -22,7 +22,9 @@ interface BrainstormingData {
 
 interface BrainstormingRequest {
   secteursActivite: string[];
+  secteurActiviteLibre?: string;
   zoneGeographique?: string[];
+  zoneGeographiqueLibre?: string;
   produitsCGR?: string[];
   clientsExclure?: string;
 }
@@ -31,20 +33,36 @@ export async function POST(request: NextRequest) {
   try {
     const requestData: BrainstormingRequest = await request.json();
     
-    // Enhanced validation
-    if (!requestData.secteursActivite || requestData.secteursActivite.length === 0) {
+    // Combine predefined sectors with free text sectors
+    const allSecteurs = [
+      ...(requestData.secteursActivite || []),
+      ...(requestData.secteurActiviteLibre?.trim() ? [requestData.secteurActiviteLibre.trim()] : [])
+    ];
+
+    // Combine predefined zones with free text zones
+    const allZones = [
+      ...(requestData.zoneGeographique || []),
+      ...(requestData.zoneGeographiqueLibre?.trim() ? [requestData.zoneGeographiqueLibre.trim()] : [])
+    ];
+    
+    // Enhanced validation - check if we have at least one sector (predefined OR free text)
+    if (allSecteurs.length === 0) {
       return NextResponse.json(
-        { error: 'Au moins un secteur d\'activité requis pour le brainstorming' },
+        { error: 'Au moins un secteur d\'activité requis pour le brainstorming (sélectionné ou saisi librement)' },
         { status: 400 }
       );
     }
     
-    console.log('🧠 Recherche brainstorming demandée:', JSON.stringify(requestData, null, 2));
+    console.log('🧠 Recherche brainstorming demandée:', JSON.stringify({
+      ...requestData,
+      allSecteurs,
+      allZones
+    }, null, 2));
     
     // Check cache with better key generation
     const cacheKey = generateCacheKey(
-      `brainstorming-${requestData.secteursActivite.join(',')}`,
-      requestData.zoneGeographique?.join(',') || 'global',
+      `brainstorming-${allSecteurs.join(',')}`,
+      allZones.join(',') || 'global',
       [`brainstorming-${Date.now()}`]
     );
     
@@ -54,17 +72,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ...cachedResult, cached: true });
     }
     
-    // Prepare data with defaults
+    // Prepare data with defaults - use combined arrays
     const brainstormingData: BrainstormingData = {
-      secteursActivite: requestData.secteursActivite,
-      zoneGeographique: requestData.zoneGeographique || ['France'],
+      secteursActivite: allSecteurs,
+      zoneGeographique: allZones.length > 0 ? allZones : ['France'],
       produitsCGR: requestData.produitsCGR && requestData.produitsCGR.length > 0 
         ? requestData.produitsCGR 
         : ['Ressorts fil', 'Ressorts plats', 'Pièces découpées', 'Formage de tubes', 'Assemblages automatisés', 'Mécatronique', 'Injection plastique'],
       clientsExclure: requestData.clientsExclure || ''
     };
     
-    console.log('📋 Données brainstorming:', brainstormingData);
+    console.log('📋 Données brainstorming finales:', brainstormingData);
     
     // Generate market analysis with OpenAI (with timeout)
     const openaiClient = new OpenAIBrainstormingClient();
@@ -97,7 +115,9 @@ export async function POST(request: NextRequest) {
         marketsGenerated: marketResult.markets?.length || 0,
         searchCriteria: brainstormingData,
         originalProduitsCGR: requestData.produitsCGR,
-        usedDefaultProducts: !requestData.produitsCGR || requestData.produitsCGR.length === 0
+        usedDefaultProducts: !requestData.produitsCGR || requestData.produitsCGR.length === 0,
+        sectorsUsed: allSecteurs,
+        zonesUsed: allZones
       }
     };
     

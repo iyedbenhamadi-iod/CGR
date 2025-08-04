@@ -48,12 +48,25 @@ export class PerplexityEnterpriseClient {
     
     try {
       console.log('🔍 Recherche d\'entreprises avec Perplexity...');
+      
+      // ✅ FIXED: Proper sector handling for logging
+      const allSectors = [
+        ...(searchData.secteursActivite || []),
+        ...(searchData.secteurActiviteLibre ? [searchData.secteurActiviteLibre] : [])
+      ].filter(Boolean);
+      
+      const allZones = [
+        ...(searchData.zoneGeographique || []),
+        ...(searchData.zoneGeographiqueLibre ? [searchData.zoneGeographiqueLibre] : [])
+      ].filter(Boolean);
+      
       console.log('📊 Paramètres de recherche:', {
-        secteur: searchData.secteursActivite[0],
-        zone: searchData.zoneGeographique.join(', '),
-        taille: searchData.tailleEntreprise,
-        produits: searchData.produitsCGR.join(', '),
-        volume: searchData.volumePieces[0]?.toLocaleString()
+        secteur: allSectors.length > 0 ? allSectors[0] : 'Non spécifié',
+        secteurs_complets: allSectors,
+        zone: allZones.join(', '),
+        taille: searchData.tailleEntreprise || 'Toutes tailles',
+        produits: searchData.produitsCGR?.join(', ') || 'Tous produits CGR',
+        volume: searchData.volumePieces?.[0]?.toLocaleString() || 'Non spécifié'
       });
       
       const response = await axios.post(
@@ -211,24 +224,53 @@ Pour chaque entreprise potentielle, tu DOIS rechercher:
       ...(data.clientsExclure ? data.clientsExclure.split('\n').filter(Boolean) : [])
     ];
 
-    const secteurPrincipal = data.secteursActivite[0] || data.secteurActiviteLibre || 'Industriel';
-    const zoneGeo = data.zoneGeographique.length > 0 
-      ? data.zoneGeographique.join(', ') + (data.zoneGeographiqueLibre ? `, ${data.zoneGeographiqueLibre}` : '')
-      : data.zoneGeographiqueLibre || 'France et Europe';
+    // ✅ FIXED: Proper sector handling - combine and filter properly
+    const allSectors = [
+      ...(data.secteursActivite || []),
+      ...(data.secteurActiviteLibre ? [data.secteurActiviteLibre.trim()] : [])
+    ].filter(s => s && s.trim() !== '');
+    
+    const secteurPrincipal = allSectors.length > 0 ? allSectors[0] : 'Industriel';
+    
+    // ✅ FIXED: Proper zone handling - combine and filter properly  
+    const allZones = [
+      ...(data.zoneGeographique || []),
+      ...(data.zoneGeographiqueLibre ? [data.zoneGeographiqueLibre.trim()] : [])
+    ].filter(z => z && z.trim() !== '');
+    
+    const zoneGeo = allZones.length > 0 ? allZones.join(', ') : 'France et Europe';
+    
     const tailleEntreprise = data.tailleEntreprise || 'Toutes tailles';
     const volumePieces = data.volumePieces && data.volumePieces.length > 0 ? data.volumePieces[0] : 50000;
-    const produitsCGRSpecifiques = data.produitsCGR.length > 0 ? data.produitsCGR : ['Ressorts fil'];
+    
+    // ✅ FIXED: Handle empty produitsCGR array
+    const produitsCGRSpecifiques = data.produitsCGR && data.produitsCGR.length > 0 
+      ? data.produitsCGR 
+      : ['Ressorts fil', 'Pièces découpées', 'Formage tubes', 'Assemblages', 'Mécatronique', 'Injection plastique'];
+    
     const motsCles = data.motsCles || 'composants mécaniques, précision, qualité';
-    const usinesCGR = data.usinesCGR || ['Saint-Yorre', 'PMPC', 'Igé'];
+    const usinesCGR = data.usinesCGR && data.usinesCGR.length > 0 ? data.usinesCGR : ['Saint-Yorre', 'PMPC', 'Igé'];
+
+    // ✅ DEBUGGING: Log the actual values being used
+    console.log('🔧 Construction du prompt avec:', {
+      secteurPrincipal,
+      allSectors,
+      secteurActiviteLibre: data.secteurActiviteLibre,
+      secteursActivite: data.secteursActivite,
+      zoneGeo,
+      allZones,
+      produitsCGRSpecifiques
+    });
 
     return `RECHERCHE CIBLÉE: ${data.nombreResultats} entreprises FABRICANTES pour CGR International
 
 **CONTRAINTES STRICTES À RESPECTER:**
 
 **Secteur d'activité OBLIGATOIRE:** ${secteurPrincipal}
-- Focus exclusif sur les FABRICANTS de ce secteur
+${allSectors.length > 1 ? `**Secteurs additionnels:** ${allSectors.slice(1).join(', ')}` : ''}
+- Focus exclusif sur les FABRICANTS du secteur "${secteurPrincipal}"
 - Entreprises qui conçoivent ET fabriquent des produits dans ce secteur
-- Avec usines de production identifiées
+- Avec usines de production identifiées et localisées
 
 **Zone géographique ciblée:** ${zoneGeo}
 - Priorité aux entreprises avec usines dans ces zones
@@ -254,7 +296,7 @@ ${this.getTailleEntrepriseGuidance(tailleEntreprise)}
 
 **FOCUS FABRICANTS - RECHERCHE OBLIGATOIRE DÉTAILLÉE:**
 
-Pour chaque secteur, tu DOIS rechercher et confirmer:
+Pour le secteur "${secteurPrincipal}", tu DOIS rechercher et confirmer:
 
 1. **IDENTIFICATION PRÉCISE:**
    - Raison sociale complète et officielle
@@ -310,9 +352,13 @@ Avant d'inclure une entreprise, tu DOIS rechercher et confirmer:
 - Description: "nous proposons", "nous commercialisons", "nous distribuons"
 - Pas d'usine identifiée ou seulement bureaux commerciaux
 
+**SECTEUR SPÉCIFIQUE "${secteurPrincipal.toUpperCase()}" - RECHERCHE CIBLÉE:**
+
+${this.getSpecificSectorGuidance(secteurPrincipal)}
+
 **INFORMATIONS REQUISES PAR ENTREPRISE:**
 - Nom officiel et site web
-- Description précise de l'activité de fabrication
+- Description précise de l'activité de fabrication dans le secteur "${secteurPrincipal}"
 - Localisation des usines de production
 - Produits fabriqués nécessitant des composants mécaniques
 - Structure groupe (maison-mère, filiales)
@@ -322,10 +368,11 @@ Avant d'inclure une entreprise, tu DOIS rechercher et confirmer:
 
 **VALIDATION FINALE:**
 - Chaque entreprise doit être un FABRICANT avec usines, pas un revendeur
-- L'argumentaire doit détailler: usine, groupe, produits, conception
+- L'argumentaire doit détailler: usines, groupe, produits, conception
 - Les produits CGR proposés limités à: ${produitsCGRSpecifiques.join(', ')}
 - Taille et volume correspondant exactement
 - Sources récentes et vérifiables
+- Secteur d'activité: "${secteurPrincipal}" uniquement
 
 Retourne uniquement le JSON demandé, sans texte supplémentaire.`;
   }
@@ -359,10 +406,53 @@ Retourne uniquement le JSON demandé, sans texte supplémentaire.`;
     }
   }
 
+  private getSpecificSectorGuidance(secteur: string): string {
+    const secteurLower = secteur.toLowerCase();
+    
+    // Handle specific sectors including real estate
+    if (secteurLower.includes('immobil') || secteurLower.includes('real estate') || secteurLower.includes('bâtiment') || secteurLower.includes('construction')) {
+      return `Pour le secteur IMMOBILIER/CONSTRUCTION, rechercher des FABRICANTS de:
+• Systèmes de fermeture (portes, fenêtres, volets) avec usines identifiées
+• Équipements de sécurité pour bâtiments (contrôle d'accès, alarmes)
+• Systèmes d'ouverture automatique (portes automatiques, portails)
+• Équipements de confort (climatisation, ventilation, chauffage)
+• Mobilier urbain et équipements publics
+• Systèmes d'ascenseurs et monte-charges
+• Équipements de parking automatisés
+• Systèmes de stores et protection solaire
+
+ÉVITER: Promoteurs immobiliers, agences immobilières, bureaux d'architecture, installateurs`;
+    }
+    
+    return `Pour le secteur "${secteur}", rechercher des FABRICANTS avec:
+• Usines de production identifiées et localisées
+• Produits manufacturés intégrant des composants mécaniques
+• Activités de conception et développement
+• Capacités industrielles adaptées aux volumes requis
+• Structure organisationnelle avec R&D et production
+• Marchés cibles nécessitant des composants de précision`;
+  }
+
   private getSectorSpecificSearchStrategy(secteur: string, produitsCGR: string[]): string {
     const produitsStr = produitsCGR.join(', ');
+    const secteurLower = secteur.toLowerCase();
     
-    switch (secteur.toLowerCase()) {
+    // ✅ FIXED: Add real estate sector handling
+    if (secteurLower.includes('immobil') || secteurLower.includes('real estate') || secteurLower.includes('bâtiment') || secteurLower.includes('construction')) {
+      return `SECTEUR IMMOBILIER/CONSTRUCTION - Rechercher des FABRICANTS avec usines de:
+• Systèmes de fermeture (avec sites production) intégrant des ${produitsStr}
+• Équipements de sécurité bâtiment conçus et fabriqués avec mécanismes précis
+• Portes et fenêtres automatiques avec usines identifiées
+• Systèmes d'ascenseurs et monte-charges avec composants mécaniques
+• Équipements HVAC avec sites de fabrication et assemblages
+• Mobilier urbain spécialisé avec activités de production
+• Systèmes de stores et protection solaire fabriqués
+• Équipements de parking automatisés avec usines propres
+
+ÉVITER: Promoteurs immobiliers, agences, architectes, installateurs équipements`;
+    }
+    
+    switch (secteurLower) {
       case 'médical':
         return `SECTEUR MÉDICAL - Rechercher des FABRICANTS avec usines de:
 • Dispositifs médicaux (avec localisation usines) intégrant des ${produitsStr}
@@ -419,15 +509,15 @@ Retourne uniquement le JSON demandé, sans texte supplémentaire.`;
 ÉVITER: Distributeurs matériel militaire, intégrateurs systèmes`;
         
       default:
-        return `SECTEUR INDUSTRIEL - Rechercher des FABRICANTS avec usines de:
-• Machines spéciales fabriquées (avec sites production) nécessitant des ${produitsStr}
-• Équipements automatisés avec usines identifiées et mécanismes précis
-• Systèmes de manutention et transport conçus et fabriqués
-• Outillage industriel spécialisé avec activités de fabrication
+        return `SECTEUR "${secteur.toUpperCase()}" - Rechercher des FABRICANTS avec usines de:
+• Équipements spécialisés fabriqués (avec sites production) nécessitant des ${produitsStr}
+• Machines et systèmes avec usines identifiées et mécanismes précis
+• Produits manufacturés intégrant des composants mécaniques
+• Outillage spécialisé avec activités de fabrication
 • Équipements de mesure et contrôle avec usines propres
-• Machines de production spécifiques avec sites de fabrication
+• Systèmes automatisés avec sites de production
 
-ÉVITER: Distributeurs machines industrielles, intégrateurs, bureau d'études`;
+ÉVITER: Distributeurs, revendeurs, installateurs, intégrateurs`;
     }
   }
 

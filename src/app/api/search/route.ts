@@ -8,6 +8,8 @@ interface EnhancedSearchData {
   tailleEntreprise?: string;
   motsCles?: string;
   produitsCGR?: string[];
+  autresProduits?: string; // Add this line after produitsCGR
+
   volumePieces?: number[];
   clientsExclure?: string;
   usinesCGR?: string[];
@@ -123,6 +125,8 @@ function generateRequestId(searchData: EnhancedSearchData, userId?: string): str
     productType: searchData.typeProduitConcurrent,
     volumeType: searchData.volumeProductionConcurrent,
     competitorCount: searchData.nombreConcurrents
+,    autresProduits: searchData.autresProduits // Add this line after products
+
   };
   
   return Buffer.from(JSON.stringify(key)).toString('base64').slice(0, 32);
@@ -323,7 +327,7 @@ async function handleBrainstormingSearch(searchData: EnhancedSearchData, request
   const response = await makeApiCall(`${baseUrl}/api/brainstorming`, {
     secteursActivite: searchData.secteursActivite,
         secteurActiviteLibre: searchData.secteurActiviteLibre, // Nouveau
-
+    autresProduits: searchData.autresProduits, // Add this line
     zoneGeographique: searchData.zoneGeographique,
         zoneGeographiqueLibre: searchData.zoneGeographiqueLibre, // Nouveau
 
@@ -412,96 +416,125 @@ async function handleCompetitorIdentificationSearch(searchData: EnhancedSearchDa
   return result;
 }
 
+// Remplacer la fonction handleEnterpriseSearch dans app/api/search/route.ts
+
+// Replace the handleEnterpriseSearch function in app/api/search/route.ts
+
 async function handleEnterpriseSearch(searchData: EnhancedSearchData, request: NextRequest) {
+   // Validation côté search route aussi pour être cohérent
    const hasPredefinedSectors = searchData.secteursActivite && searchData.secteursActivite.length > 0;
-    const hasFreeTextSector = searchData.secteurActiviteLibre && searchData.secteurActiviteLibre.trim() !== '';
+   const hasFreeTextSector = searchData.secteurActiviteLibre && searchData.secteurActiviteLibre.trim() !== '';
 
-    if (!hasPredefinedSectors && !hasFreeTextSector) {
-        // Throw a specific error that can be caught and handled as a 400 Bad Request.
-        throw new Error("Validation failed: Au moins un secteur d'activité (prédéfini ou libre) est requis.");
-    }
-  const baseUrl = getBaseUrl(request);
+   if (!hasPredefinedSectors && !hasFreeTextSector) {
+       throw new Error("Au moins un secteur d'activité (prédéfini ou libre) est requis.");
+   }
 
-  const response = await makeApiCall(`${baseUrl}/api/enterprises`, {
+   const baseUrl = getBaseUrl(request);
+
+   const response = await makeApiCall(`${baseUrl}/api/enterprises`, {
+     secteursActivite: searchData.secteursActivite,
+     secteurActiviteLibre: searchData.secteurActiviteLibre,
+     zoneGeographique: searchData.zoneGeographique,
+     zoneGeographiqueLibre: searchData.zoneGeographiqueLibre,
+     autresProduits: searchData.autresProduits, // ✅ This was missing!
+     tailleEntreprise: searchData.tailleEntreprise,
+     motsCles: searchData.motsCles,
+     produitsCGR: searchData.produitsCGR,
+     volumePieces: searchData.volumePieces,
+     clientsExclure: searchData.clientsExclure,
+     usinesCGR: searchData.usinesCGR,
+     nombreResultats: searchData.nombreResultats
+   });
+  
+   if (!response.ok) {
+     const error = await response.json();
+     
+     // Gestion spécifique des erreurs 404 (aucun résultat)
+     if (response.status === 404) {
+       return {
+         searchType: 'entreprises',
+         prospects: [],
+         totalFound: 0,
+         cached: false,
+         sources: [],
+         message: error.error || 'Aucune entreprise trouvée avec les critères spécifiés',
+         debug: {
+           companiesFound: 0,
+           enterpriseDetails: [],
+           scoreStats: {
+             average: 0,
+             highest: 0,
+             lowest: 0
+           }
+         }
+       };
+     }
+     
+     // Pour les autres erreurs, on relance l'exception
+     throw new Error(error.error || 'Enterprise search failed');
+   }
+  
+   let result = await response.json();
+  
+   // Handle additional analyses with parallel execution
+   const additionalAnalyses = [];
+  
+   if (searchData.includeMarketAnalysis) {
+     additionalAnalyses.push(
+       makeApiCall(`${baseUrl}/api/brainstorming`, {
+         secteursActivite: searchData.secteursActivite,
+         secteurActiviteLibre: searchData.secteurActiviteLibre, // ✅ Add this too
+         zoneGeographique: searchData.zoneGeographique,
+         zoneGeographiqueLibre: searchData.zoneGeographiqueLibre, // ✅ Add this too
+         produitsCGR: searchData.produitsCGR,
+         autresProduits: searchData.autresProduits, // ✅ Add this too
+         clientsExclure: searchData.clientsExclure
+       }).then(async (res) => {
+         if (res.ok) {
+           const marketResult = await res.json();
+           return { type: 'market', data: marketResult.marketOpportunities };
+         }
+         return null;
+       }).catch(() => null)
+     );
+   }
+  
+   if (searchData.includeCompetitorAnalysis && searchData.competitorNames?.length) {
+     const competitorPromises = searchData.competitorNames.map(competitorName =>
+       makeApiCall(`${baseUrl}/api/competitors`, {
+         nomConcurrent: competitorName
+       }).then(async (res) => {
+         if (res.ok) {
+           const competitorResult = await res.json();
+           return { name: competitorName, analysis: competitorResult.competitorAnalysis };
+         }
+         return null;
+       }).catch(() => null)
+     );
     
-    secteursActivite: searchData.secteursActivite,
-    secteurActiviteLibre: searchData.secteurActiviteLibre, // Nouveau
-
-    zoneGeographique: searchData.zoneGeographique,
-        zoneGeographiqueLibre: searchData.zoneGeographiqueLibre, // Nouveau
-
-    tailleEntreprise: searchData.tailleEntreprise,
-    motsCles: searchData.motsCles,
-    produitsCGR: searchData.produitsCGR,
-    volumePieces: searchData.volumePieces,
-    clientsExclure: searchData.clientsExclure,
-    usinesCGR: searchData.usinesCGR,
-    nombreResultats: searchData.nombreResultats
-  });
+     additionalAnalyses.push(
+       Promise.all(competitorPromises).then(results => ({
+         type: 'competitor',
+         data: results.filter(Boolean)
+       }))
+     );
+   }
   
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Enterprise search failed');
-  }
-  
-  let result = await response.json();
-  
-  // Handle additional analyses with parallel execution
-  const additionalAnalyses = [];
-  
-  if (searchData.includeMarketAnalysis) {
-    additionalAnalyses.push(
-      makeApiCall(`${baseUrl}/api/brainstorming`, {
-        secteursActivite: searchData.secteursActivite,
-        zoneGeographique: searchData.zoneGeographique,
-        produitsCGR: searchData.produitsCGR,
-        clientsExclure: searchData.clientsExclure
-      }).then(async (res) => {
-        if (res.ok) {
-          const marketResult = await res.json();
-          return { type: 'market', data: marketResult.marketOpportunities };
-        }
-        return null;
-      }).catch(() => null)
-    );
-  }
-  
-  if (searchData.includeCompetitorAnalysis && searchData.competitorNames?.length) {
-    const competitorPromises = searchData.competitorNames.map(competitorName =>
-      makeApiCall(`${baseUrl}/api/competitors`, {
-        nomConcurrent: competitorName
-      }).then(async (res) => {
-        if (res.ok) {
-          const competitorResult = await res.json();
-          return { name: competitorName, analysis: competitorResult.competitorAnalysis };
-        }
-        return null;
-      }).catch(() => null)
-    );
+   // Wait for all additional analyses
+   if (additionalAnalyses.length > 0) {
+     const additionalResults = await Promise.allSettled(additionalAnalyses);
     
-    additionalAnalyses.push(
-      Promise.all(competitorPromises).then(results => ({
-        type: 'competitor',
-        data: results.filter(Boolean)
-      }))
-    );
-  }
+     additionalResults.forEach((settledResult) => {
+       if (settledResult.status === 'fulfilled' && settledResult.value) {
+         const { type, data } = settledResult.value;
+         if (type === 'market') {
+           result.marketAnalysis = data;
+         } else if (type === 'competitor' && data.length > 0) {
+           result.competitorAnalysis = data;
+         }
+       }
+     });
+   }
   
-  // Wait for all additional analyses
-  if (additionalAnalyses.length > 0) {
-    const additionalResults = await Promise.allSettled(additionalAnalyses);
-    
-    additionalResults.forEach((settledResult) => {
-      if (settledResult.status === 'fulfilled' && settledResult.value) {
-        const { type, data } = settledResult.value;
-        if (type === 'market') {
-          result.marketAnalysis = data;
-        } else if (type === 'competitor' && data.length > 0) {
-          result.competitorAnalysis = data;
-        }
-      }
-    });
-  }
-  
-  return result;
+   return result;
 }

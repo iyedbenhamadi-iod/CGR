@@ -50,16 +50,31 @@ interface EnterpriseSearchData {
   tailleEntreprise?: string;
   motsCles?: string;
   produitsCGR?: string[];
+  autresProduits?: string;
   volumePieces?: number[];
   clientsExclure?: string;
   usinesCGR?: string[];
   nombreResultats?: number;
   secteurActiviteLibre?: string;
-  zoneGeographiqueLibre?: string
+  zoneGeographiqueLibre?: string;
+}
+
+// Interface for the perplexity client search method
+interface PerplexitySearchParams {
+  secteursActivite: string[];
+  zoneGeographique: string[];
+  secteurActiviteLibre: string;
+  zoneGeographiqueLibre: string;
+  tailleEntreprise: string;
+  motsCles: string;
+  produitsCGR: string[];
+  volumePieces: number[];
+  clientsExclure: string;
+  usinesCGR: string[];
+  nombreResultats: number;
 }
 
 // Fixed score calculation for a score out of 10
-// Fonction de scoring corrigée pour une échelle de 0 à 10
 const calculateScore = (enterprise: Enterprise): number => {
   let score = 0;
   
@@ -133,69 +148,60 @@ const calculateScore = (enterprise: Enterprise): number => {
   return Math.round(score * 10) / 10;
 };
 
-// Version alternative avec pondération différente
-const calculateScoreAlternative = (enterprise: Enterprise): number => {
-  let score = 0;
-  
-  // Critères principaux (70% du score - 7 points max)
-  
-  // Adéquation produits (4 points max - 40% du score)
-  const targetedProducts = enterprise.potentiel_cgr.produits_cibles_chez_le_prospect.length;
-  const cgrProducts = enterprise.potentiel_cgr.produits_cgr_a_proposer.length;
-  const productMatch = Math.min(4, (targetedProducts + cgrProducts) * 0.4);
-  score += productMatch;
-  
-  // Qualité de l'approche commerciale (3 points max - 30% du score)
-  const argumentLength = enterprise.potentiel_cgr.argumentaire_approche.length;
-  if (argumentLength > 250) {
-    score += 3;
-  } else if (argumentLength > 150) {
-    score += 2;
-  } else if (argumentLength > 80) {
-    score += 1.5;
-  } else if (argumentLength > 30) {
-    score += 1;
-  }
-  
-  // Critères secondaires (30% du score - 3 points max)
-  
-  // Informations disponibles sur l'entreprise (1.5 points max)
-  let infoBonus = 0;
-  if (enterprise.site_web && enterprise.site_web !== 'Non disponible') infoBonus += 0.5;
-  if (enterprise.produits_entreprise.length >= 3) infoBonus += 0.5;
-  if (enterprise.fournisseur_actuel_estimation && enterprise.fournisseur_actuel_estimation !== 'Non identifié') infoBonus += 0.5;
-  score += infoBonus;
-  
-  // Qualité des sources (1.5 points max)
-  const sourcesCount = enterprise.sources?.length || 0;
-  const sourceBonus = Math.min(1.5, sourcesCount * 0.3);
-  score += sourceBonus;
-  
-  // Assurer que le score reste entre 0 et 10
-  score = Math.min(10, Math.max(0, score));
-  
-  return Math.round(score * 10) / 10;
-};
-
 export async function POST(request: NextRequest) {
     try {
         const searchData: EnterpriseSearchData = await request.json();
         
-        // --- NOUVELLE VALIDATION CORRIGÉE ---
-        const hasPredefinedSectors = searchData.secteursActivite && searchData.secteursActivite.length > 0;
-        const hasFreeTextSector = searchData.secteurActiviteLibre && searchData.secteurActiviteLibre.trim() !== '';
+        console.log('🔍 Données reçues:', JSON.stringify(searchData, null, 2));
+        
+        // --- VALIDATION CORRIGÉE ET AMÉLIORÉE ---
+        // Check for sectors: either predefined OR free text (or both)
+        const hasPredefinedSectors = searchData.secteursActivite && 
+                                    Array.isArray(searchData.secteursActivite) && 
+                                    searchData.secteursActivite.length > 0 &&
+                                    searchData.secteursActivite.some(s => s && s.trim() !== '');
+        
+        const hasFreeTextSector = searchData.secteurActiviteLibre && 
+                                 typeof searchData.secteurActiviteLibre === 'string' &&
+                                 searchData.secteurActiviteLibre.trim() !== '';
+
+        // ✅ FIXED: Better logging with actual values
+        console.log('🔍 Validation secteurs:', { 
+            hasPredefinedSectors, 
+            hasFreeTextSector,
+            secteursActivite: searchData.secteursActivite,
+            secteurActiviteLibre: searchData.secteurActiviteLibre,
+            secteurActiviteLibreTrimmed: searchData.secteurActiviteLibre?.trim()
+        });
 
         if (!hasPredefinedSectors && !hasFreeTextSector) {
+            console.log('❌ Aucun secteur d\'activité fourni');
             return NextResponse.json(
                 { error: "Au moins un secteur d'activité (prédéfini ou libre) est requis." },
                 { status: 400 }
             );
         }
 
-        const hasPredefinedZone = searchData.zoneGeographique && searchData.zoneGeographique.length > 0;
-        const hasFreeTextZone = searchData.zoneGeographiqueLibre && searchData.zoneGeographiqueLibre.trim() !== '';
+        // Check for geographic zones: either predefined OR free text (or both)
+        const hasPredefinedZone = searchData.zoneGeographique && 
+                                 Array.isArray(searchData.zoneGeographique) && 
+                                 searchData.zoneGeographique.length > 0 &&
+                                 searchData.zoneGeographique.some(z => z && z.trim() !== '');
+        
+        const hasFreeTextZone = searchData.zoneGeographiqueLibre && 
+                               typeof searchData.zoneGeographiqueLibre === 'string' &&
+                               searchData.zoneGeographiqueLibre.trim() !== '';
+
+        console.log('🔍 Validation zones:', { 
+            hasPredefinedZone, 
+            hasFreeTextZone,
+            zoneGeographique: searchData.zoneGeographique,
+            zoneGeographiqueLibre: searchData.zoneGeographiqueLibre,
+            zoneGeographiqueLibreTrimmed: searchData.zoneGeographiqueLibre?.trim()
+        });
 
         if (!hasPredefinedZone && !hasFreeTextZone) {
+            console.log('❌ Aucune zone géographique fournie');
             return NextResponse.json(
                 { error: 'Au moins une zone géographique (prédéfinie ou libre) est requise.' },
                 { status: 400 }
@@ -203,18 +209,34 @@ export async function POST(request: NextRequest) {
         }
         // --- FIN DE LA VALIDATION ---
         
-        console.log('🆕 Recherche entreprises CGR demandée:', JSON.stringify(searchData, null, 2));
+        console.log('✅ Validation réussie - Recherche entreprises CGR demandée');
+        
+        // ✅ FIXED: Generate cache key properly handling empty arrays
+        const sectorsForCache = [
+            ...(searchData.secteursActivite || []),
+            ...(searchData.secteurActiviteLibre ? [searchData.secteurActiviteLibre.trim()] : [])
+        ].filter(s => s && s.trim() !== '').join(',');
+        
+        const zonesForCache = [
+            ...(searchData.zoneGeographique || []),
+            ...(searchData.zoneGeographiqueLibre ? [searchData.zoneGeographiqueLibre.trim()] : [])
+        ].filter(z => z && z.trim() !== '').join(',');
+        
+        console.log('🔑 Cache key components:', {
+            sectorsForCache,
+            zonesForCache,
+            produitsCGR: searchData.produitsCGR
+        });
         
         const cacheKey = generateCacheKey(
-    searchData.produitsCGR?.join(',') || 'default',
-    [searchData.zoneGeographique.join(','), searchData.zoneGeographiqueLibre].filter(Boolean).join(','),
-    [
-        searchData.secteursActivite.join(','),
-        searchData.secteurActiviteLibre,
-        searchData.motsCles,
-        searchData.tailleEntreprise
-    ].filter(Boolean) as string[] // FIX: On confirme à TypeScript que le tableau ne contient que des strings
-);
+            [searchData.produitsCGR?.join(',') || 'default', searchData.autresProduits].filter(Boolean).join(','),
+            zonesForCache,
+            [
+                sectorsForCache,
+                searchData.motsCles,
+                searchData.tailleEntreprise
+            ].filter(Boolean) as string[]
+        );
         
         const cachedResult = await getCachedResult(cacheKey);
         if (cachedResult) {
@@ -225,26 +247,38 @@ export async function POST(request: NextRequest) {
         const perplexityClient = new PerplexityEnterpriseClient();
         
         console.log('🔍 Recherche entreprises avec Perplexity...');
+        
+        // ✅ FIXED: Prepare search parameters with proper handling of empty values
+        const searchParams: PerplexitySearchParams = {
+            secteursActivite: searchData.secteursActivite?.filter(s => s && s.trim() !== '') || [],
+            zoneGeographique: searchData.zoneGeographique?.filter(z => z && z.trim() !== '') || [],
+            secteurActiviteLibre: searchData.secteurActiviteLibre?.trim() || '',
+            zoneGeographiqueLibre: searchData.zoneGeographiqueLibre?.trim() || '',
+            tailleEntreprise: searchData.tailleEntreprise?.trim() || 'Toutes tailles',
+            motsCles: searchData.motsCles?.trim() || '',
+            produitsCGR: searchData.produitsCGR?.filter(p => p && p.trim() !== '') || [],
+            volumePieces: searchData.volumePieces || [],
+            clientsExclure: searchData.clientsExclure?.trim() || '',
+            usinesCGR: searchData.usinesCGR?.filter(u => u && u.trim() !== '') || [],
+            nombreResultats: searchData.nombreResultats || 5
+        };
+
+        // If autresProduits is provided, merge with motsCles
+        if (searchData.autresProduits && searchData.autresProduits.trim()) {
+            searchParams.motsCles = searchParams.motsCles 
+                ? `${searchParams.motsCles} ${searchData.autresProduits.trim()}`
+                : searchData.autresProduits.trim();
+        }
+        
+        console.log('📤 Paramètres envoyés à Perplexity:', JSON.stringify(searchParams, null, 2));
+        
         const enterpriseResult = await withTimeout(
-            perplexityClient.searchEnterprises({
-                ...searchData,
-                // Transmission des champs libres
-                secteurActiviteLibre: searchData.secteurActiviteLibre || '',
-                zoneGeographiqueLibre: searchData.zoneGeographiqueLibre || '',
-                tailleEntreprise: searchData.tailleEntreprise || 'Toutes tailles',
-                motsCles: searchData.motsCles || '',
-                produitsCGR: searchData.produitsCGR || [],
-                volumePieces: searchData.volumePieces || [],
-                clientsExclure: searchData.clientsExclure || '',
-                usinesCGR: searchData.usinesCGR || [],
-                nombreResultats: searchData.nombreResultats || 5
-            }),
+            perplexityClient.searchEnterprises(searchParams),
             180000
         );
-        
-        // ... le reste de la fonction est inchangé ...
 
         if (!enterpriseResult.success) {
+            console.log('❌ Erreur de recherche:', enterpriseResult.error);
             return NextResponse.json({ 
                 error: 'Erreur lors de la recherche d\'entreprises',
                 details: enterpriseResult.error,
@@ -253,9 +287,15 @@ export async function POST(request: NextRequest) {
         }
         
         if (enterpriseResult.enterprises.length === 0) {
+            console.log('❌ Aucune entreprise trouvée');
             return NextResponse.json({ 
                 error: 'Aucune entreprise trouvée avec les critères spécifiés',
-                type: 'no_results'
+                type: 'no_results',
+                debug: {
+                    searchParams: searchParams,
+                    sectorsUsed: sectorsForCache,
+                    zonesUsed: zonesForCache
+                }
             }, { status: 404 });
         }
         
@@ -268,9 +308,6 @@ export async function POST(request: NextRequest) {
             const score = calculateScore(enterprise);
             
             console.log(`📊 Score calculé pour ${enterprise.nom_entreprise}: ${score}/10`);
-            console.log(`   - Produits ciblés: ${enterprise.potentiel_cgr.produits_cibles_chez_le_prospect.length}`);
-            console.log(`   - Produits CGR à proposer: ${enterprise.potentiel_cgr.produits_cgr_a_proposer.length}`);
-            console.log(`   - Longueur argumentaire: ${enterprise.potentiel_cgr.argumentaire_approche.length} caractères`);
             
             return {
                 company: enterprise.nom_entreprise,
@@ -294,9 +331,9 @@ export async function POST(request: NextRequest) {
         
         console.log('📊 Statistiques finales:');
         console.log(`  - Entreprises trouvées: ${finalProspects.length}`);
-        console.log(`  - Score moyen: ${(finalProspects.reduce((sum, p) => sum + p.score, 0) / finalProspects.length).toFixed(1)}/10`);
-        console.log(`  - Score le plus élevé: ${finalProspects[0]?.score}/10`);
-        console.log(`  - Score le plus bas: ${finalProspects[finalProspects.length - 1]?.score}/10`);
+        console.log(`  - Score moyen: ${finalProspects.length > 0 ? (finalProspects.reduce((sum, p) => sum + p.score, 0) / finalProspects.length).toFixed(1) : 0}/10`);
+        console.log(`  - Score le plus élevé: ${finalProspects[0]?.score || 0}/10`);
+        console.log(`  - Score le plus bas: ${finalProspects[finalProspects.length - 1]?.score || 0}/10`);
         
         const response = {
             searchType: 'entreprises',
@@ -312,9 +349,14 @@ export async function POST(request: NextRequest) {
                     website: p.website
                 })),
                 scoreStats: {
-                    average: Math.round((finalProspects.reduce((sum, p) => sum + p.score, 0) / finalProspects.length) * 10) / 10,
+                    average: finalProspects.length > 0 ? Math.round((finalProspects.reduce((sum, p) => sum + p.score, 0) / finalProspects.length) * 10) / 10 : 0,
                     highest: finalProspects[0]?.score || 0,
                     lowest: finalProspects[finalProspects.length - 1]?.score || 0
+                },
+                searchCriteria: {
+                    sectorsUsed: sectorsForCache,
+                    zonesUsed: zonesForCache,
+                    searchParams: searchParams
                 }
             }
         };

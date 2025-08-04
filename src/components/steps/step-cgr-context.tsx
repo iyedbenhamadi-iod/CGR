@@ -2,6 +2,7 @@
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { type StepProps, PRODUITS_CGR, CLIENTS_EXISTANTS, USINES_CGR } from "@/lib/form-types"
@@ -14,6 +15,18 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
         ? [...(prev[field as keyof typeof prev] as string[]), value]
         : (prev[field as keyof typeof prev] as string[]).filter((item) => item !== value),
     }))
+
+  const handleAutresProduits = (checked: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      autresProduits: checked ? prev.autresProduits : "",
+      produitsCGR: checked 
+        ? prev.produitsCGR.includes("Autres") 
+          ? prev.produitsCGR 
+          : [...prev.produitsCGR, "Autres"]
+        : prev.produitsCGR.filter(item => item !== "Autres")
+    }))
+  }
 
   return (
     <div className="space-y-8">
@@ -38,6 +51,32 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
               </Label>
             </div>
           ))}
+          
+          {/* Champ libre pour autres produits */}
+          <div className="col-span-full space-y-3 pt-4 border-t border-border">
+            <div className="flex items-center space-x-3">
+              <Checkbox
+                id="autres-produits"
+                checked={formData.produitsCGR.includes("Autres")}
+                onCheckedChange={(checked) => handleAutresProduits(checked as boolean)}
+              />
+              <Label htmlFor="autres-produits" className="text-base text-muted-foreground cursor-pointer">
+                Autres produits (préciser)
+              </Label>
+            </div>
+            
+            {formData.produitsCGR.includes("Autres") && (
+              <div className="ml-6">
+                <Input
+                  id="champ-libre-produits"
+                  value={formData.autresProduits || ""}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, autresProduits: e.target.value }))}
+                  placeholder="Spécifiez les autres produits souhaités..."
+                  className="text-base border-border focus:border-primary focus:ring-primary"
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
