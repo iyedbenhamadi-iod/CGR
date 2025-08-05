@@ -26,6 +26,7 @@ interface EnhancedSearchData {
   secteurActivite?: string;
   includeEmails?: boolean;
   includeLinkedIn?: boolean;
+  contactRoles?: string[]; // New field for contact roles
   // New fields for competitor identification
   regionGeographique?: string;
   regionPersonnalisee?: string;
@@ -309,6 +310,7 @@ async function handleContactSearch(searchData: EnhancedSearchData, request: Next
   const response = await makeApiCall(`${baseUrl}/api/contacts`, {
     nomEntreprise: searchData.nomEntreprise,
     posteRecherche: searchData.posteRecherche,
+    contactRoles: searchData.contactRoles,
     secteurActivite: searchData.secteurActivite,
     includeEmails: searchData.includeEmails,
     includeLinkedIn: searchData.includeLinkedIn

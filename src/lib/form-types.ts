@@ -19,6 +19,8 @@ export interface FormData {
   nombreResultats: number
   contactRoles: string[] 
   location?: string
+    regionGeographique?: string // Add this line
+
   regionPersonnalisee?: string
   typeProduitConcurrent?: 'ressort_fil' | 'ressort_feuillard' | 'piece_plastique'
   volumeProductionConcurrent?: 'petite_serie' | 'moyenne_serie' | 'grande_serie'

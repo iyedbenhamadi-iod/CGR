@@ -17,16 +17,34 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
     }))
 
   const handleAutresProduits = (checked: boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      autresProduits: checked ? prev.autresProduits : "",
-      produitsCGR: checked 
-        ? prev.produitsCGR.includes("Autres") 
-          ? prev.produitsCGR 
-          : [...prev.produitsCGR, "Autres"]
-        : prev.produitsCGR.filter(item => item !== "Autres")
-    }))
+    if (!checked) {
+      // If unchecking, remove the custom product and clear the text
+      setFormData((prev) => ({
+        ...prev,
+        autresProduits: "",
+        produitsCGR: prev.produitsCGR.filter(item => !prev.autresProduits || item !== prev.autresProduits)
+      }))
+    } else {
+      // If checking, just enable the input (the actual value will be added when typing)
+      setFormData((prev) => ({ ...prev }))
+    }
   }
+
+  const handleAutresProduitsInput = (value: string) => {
+    setFormData((prev) => {
+      // Remove the previous custom product if it exists
+      const filteredProduits = prev.produitsCGR.filter(item => !prev.autresProduits || item !== prev.autresProduits)
+      
+      return {
+        ...prev,
+        autresProduits: value,
+        // Add the new custom product to the array if it's not empty
+        produitsCGR: value.trim() ? [...filteredProduits, value] : filteredProduits
+      }
+    })
+  }
+
+  const isAutresChecked = formData.autresProduits !== "" || formData.produitsCGR.some(item => !PRODUITS_CGR.includes(item))
 
   return (
     <div className="space-y-8">
@@ -57,7 +75,7 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
             <div className="flex items-center space-x-3">
               <Checkbox
                 id="autres-produits"
-                checked={formData.produitsCGR.includes("Autres")}
+                checked={isAutresChecked}
                 onCheckedChange={(checked) => handleAutresProduits(checked as boolean)}
               />
               <Label htmlFor="autres-produits" className="text-base text-muted-foreground cursor-pointer">
@@ -65,12 +83,12 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
               </Label>
             </div>
             
-            {formData.produitsCGR.includes("Autres") && (
+            {isAutresChecked && (
               <div className="ml-6">
                 <Input
                   id="champ-libre-produits"
                   value={formData.autresProduits || ""}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, autresProduits: e.target.value }))}
+                  onChange={(e) => handleAutresProduitsInput(e.target.value)}
                   placeholder="Spécifiez les autres produits souhaités..."
                   className="text-base border-border focus:border-primary focus:ring-primary"
                 />
