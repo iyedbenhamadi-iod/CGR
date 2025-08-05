@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
     const contactClient = new ContactSearchClient();
     const contactResult = await withTimeout(
       contactClient.searchContacts(requestData),
-      120000 // 2 minutes for contact search
+      12000000 // 2 minutes for contact search
     );
     
     console.log('🔍 Résultat recherche contacts:', {

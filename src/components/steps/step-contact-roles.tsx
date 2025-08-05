@@ -105,8 +105,8 @@ export default function StepCompetitorContact({ formData, setFormData }: StepPro
   </Label>
   <Input
     id="zoneGeographique"
-    value={formData.location}
-    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+    value={formData.regionGeographique} // ✅ Changé de location à zoneGeographique
+    onChange={(e) => setFormData({ ...formData, regionGeographique: e.target.value })} // ✅ Changé
     placeholder="Ex: France, Paris, Lyon, Europe"
     className="mt-1 h-12"
   />

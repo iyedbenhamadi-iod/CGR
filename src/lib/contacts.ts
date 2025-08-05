@@ -1,5 +1,4 @@
 import axios from 'axios';
-
 interface ContactInfo {
   nom: string;
   prenom: string;
@@ -22,8 +21,9 @@ interface ContactSearchRequest {
   secteurActivite?: string;
   includeEmails?: boolean;
   includeLinkedIn?: boolean;
-  contactRoles?: string[]; // Nouveau champ pour les rôles spécifiques
+  contactRoles?: string[];
   siteWebEntreprise?: string;
+  zoneGeographique?: string; // ✅ Ajouté
   nombreResultats?: number;
 }
 
@@ -119,12 +119,12 @@ const improveRoleMatching = (contactPoste: string, requestedRoles: string[]): {
 
 export class ContactSearchClient {
   private apiKey: string;
-  private baseUrl = 'https://api.perplexity.ai';
+  private baseUrl = 'https://api.openai.com/v1';
 
   constructor() {
-    this.apiKey = process.env.PERPLEXITY_API_KEY!;
+    this.apiKey = process.env.OPENAI_API_KEY!;
     if (!this.apiKey) {
-      throw new Error('PERPLEXITY_API_KEY manquante');
+      throw new Error('openai_api_key manquante');
     }
   }
 
@@ -139,21 +139,19 @@ export class ContactSearchClient {
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
-          model: 'sonar',
+          model: 'gpt-4o-mini-search-preview-2025-03-11',
           messages: [
             { role: 'system', content: this.getSystemPrompt() },
             { role: 'user', content: prompt }
           ],
           max_tokens: 4000,
-          temperature: 0.1,
-          reasoning_effort: 'high',
         },
         {
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
           },
-          timeout: 30000
+          timeout: 300000
         }
       );
       
@@ -296,132 +294,98 @@ ${searchStrategies || `
 RÉPONSE: JSON uniquement avec contacts ciblés et pertinents.`;
   }
 
-  private parseContactResponse(response: any, request: ContactSearchRequest): ContactSearchResult {
-    try {
-      const content = response.choices[0]?.message?.content || '';
-      console.log('🔍 Réponse brute Perplexity:', content.substring(0, 500));
-      
-      // Nettoyage du contenu pour extraire le JSON
-      let cleanContent = content.trim();
-      cleanContent = cleanContent.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-      
-      const jsonMatch = cleanContent.match(/\{[\s\S]*"contacts"[\s\S]*\[[\s\S]*\][\s\S]*\}/);
-      
-      if (!jsonMatch) {
-        console.log('❌ Aucun JSON trouvé, contenu:', cleanContent);
-        return {
-          contacts: [],
-          sources: [],
-          success: false,
-          error: 'Format JSON non trouvé - contenu reçu: ' + cleanContent.substring(0, 200)
-        };
-      }
+  // Dans ContactSearchClient, remplacer la méthode parseContactResponse :
 
-      let jsonString = jsonMatch[0];
-      console.log('📋 JSON extrait:', jsonString);
-
-      const parsed = JSON.parse(jsonString);
-      
-      if (!parsed || !Array.isArray(parsed.contacts)) {
-        console.log('❌ Structure contacts invalide:', parsed);
-        return {
-          contacts: [],
-          sources: [],
-          success: false,
-          error: 'Structure JSON invalide - contacts non trouvés'
-        };
-      }
-
-      // Nettoyage et validation des contacts avec scoring amélioré
-      const cleanedContacts: ContactInfo[] = parsed.contacts
-        .filter((contact: any) => contact && typeof contact === 'object')
-        .map((contact: any) => {
-          const cleaned: ContactInfo = {
-            nom: String(contact.nom || '').trim(),
-            prenom: String(contact.prenom || '').trim(),
-            poste: String(contact.poste || '').trim(),
-            email: contact.email && this.isValidEmail(contact.email) ? contact.email : undefined,
-            phone: contact.phone ? this.cleanPhoneNumber(contact.phone) : undefined,
-            linkedin_url: contact.linkedin_url && this.isValidLinkedInUrl(contact.linkedin_url) ? contact.linkedin_url : undefined,
-            verified: Boolean(contact.verified),
-            accroche_personnalisee: contact.accroche_personnalisee ? String(contact.accroche_personnalisee).trim() : undefined,
-            sources: Array.isArray(contact.sources) ? contact.sources.filter(this.isValidUrl) : [],
-            
-            // Add alternative field names for frontend compatibility
-            accroche: contact.accroche_personnalisee ? String(contact.accroche_personnalisee).trim() : undefined,
-            pitch: contact.accroche_personnalisee ? String(contact.accroche_personnalisee).trim() : undefined
-          };
-          
-          console.log('✅ Contact nettoyé:', cleaned);
-          return cleaned;
-        })
-        .filter((contact: ContactInfo) => {
-          const isValid = contact.nom && 
-                         contact.prenom && 
-                         contact.poste;
-          
-          if (!isValid) {
-            console.log('❌ Contact rejeté (données manquantes):', contact);
-          }
-          return isValid;
-        });
-
-      // Application du filtrage par rôles si spécifié
-      let filteredContacts = cleanedContacts;
-      
-      if (request.contactRoles && request.contactRoles.length > 0) {
-        console.log('🎯 Application du filtrage par rôles...');
-        
-        const contactsWithScoring = cleanedContacts.map(contact => {
-          const roleMatch = improveRoleMatching(contact.poste, request.contactRoles!);
-          return {
-            ...contact,
-            roleScore: roleMatch.score,
-            matchedRoles: roleMatch.matchedRoles,
-            isRoleRelevant: roleMatch.isRelevant
-          };
-        });
-        
-        // Filtrer les contacts pertinents
-        filteredContacts = contactsWithScoring
-          .filter(contact => contact.isRoleRelevant)
-          .sort((a, b) => {
-            // Trier par score de correspondance décroissant
-            if (b.roleScore !== a.roleScore) {
-              return b.roleScore - a.roleScore;
-            }
-            return (b.matchedRoles?.length || 0) - (a.matchedRoles?.length || 0);
-          });
-        
-        console.log(`🎯 Filtrage terminé: ${cleanedContacts.length} → ${filteredContacts.length} contacts pertinents`);
-        console.log('📊 Scores de correspondance:', filteredContacts.map(c => ({
-          nom: `${c.prenom} ${c.nom}`,
-          poste: c.poste,
-          score: (c as any).roleScore,
-          matchedRoles: (c as any).matchedRoles
-        })));
-      }
-
-      const sources = Array.isArray(parsed.sources) ? parsed.sources.filter(this.isValidUrl) : [];
-
-      console.log(`✅ ${filteredContacts.length} contacts validés et filtrés`);
-      
-      return {
-        contacts: filteredContacts,
-        sources,
-        success: true
-      };
-    } catch (error: any) {
-      console.error('❌ Erreur parsing JSON:', error);
+private parseContactResponse(response: any, request: ContactSearchRequest): ContactSearchResult {
+  try {
+    const content = response.choices[0]?.message?.content || '';
+    console.log('🔍 Réponse brute Perplexity:', content.substring(0, 500));
+    
+    // Nettoyage du contenu pour extraire le JSON
+    let cleanContent = content.trim();
+    cleanContent = cleanContent.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    
+    const jsonMatch = cleanContent.match(/\{[\s\S]*"contacts"[\s\S]*\[[\s\S]*\][\s\S]*\}/);
+    
+    if (!jsonMatch) {
+      console.log('❌ Aucun JSON trouvé, contenu:', cleanContent);
       return {
         contacts: [],
         sources: [],
         success: false,
-        error: `Erreur parsing JSON: ${error.message}`
+        error: 'Format JSON non trouvé - contenu reçu: ' + cleanContent.substring(0, 200)
       };
     }
-  }
 
+    let jsonString = jsonMatch[0];
+    console.log('📋 JSON extrait:', jsonString);
+
+    const parsed = JSON.parse(jsonString);
+    
+    if (!parsed || !Array.isArray(parsed.contacts)) {
+      console.log('❌ Structure contacts invalide:', parsed);
+      return {
+        contacts: [],
+        sources: [],
+        success: false,
+        error: 'Structure JSON invalide - contacts non trouvés'
+      };
+    }
+
+    // Nettoyage et validation des contacts SANS filtrage strict
+    const cleanedContacts: ContactInfo[] = parsed.contacts
+      .filter((contact: any) => contact && typeof contact === 'object')
+      .map((contact: any) => {
+        const cleaned: ContactInfo = {
+          nom: String(contact.nom || '').trim(),
+          prenom: String(contact.prenom || '').trim(),
+          poste: String(contact.poste || '').trim(),
+          email: contact.email && this.isValidEmail(contact.email) ? contact.email : undefined,
+          phone: contact.phone ? this.cleanPhoneNumber(contact.phone) : undefined,
+          linkedin_url: contact.linkedin_url && this.isValidLinkedInUrl(contact.linkedin_url) ? contact.linkedin_url : undefined,
+          verified: Boolean(contact.verified),
+          accroche_personnalisee: contact.accroche_personnalisee ? String(contact.accroche_personnalisee).trim() : undefined,
+          sources: Array.isArray(contact.sources) ? contact.sources.filter(this.isValidUrl) : [],
+          
+          // Add alternative field names for frontend compatibility
+          accroche: contact.accroche_personnalisee ? String(contact.accroche_personnalisee).trim() : undefined,
+          pitch: contact.accroche_personnalisee ? String(contact.accroche_personnalisee).trim() : undefined
+        };
+        
+        console.log('✅ Contact nettoyé:', cleaned);
+        return cleaned;
+      })
+      .filter((contact: ContactInfo) => {
+        const isValid = contact.nom && 
+                       contact.prenom && 
+                       contact.poste;
+        
+        if (!isValid) {
+          console.log('❌ Contact rejeté (données manquantes):', contact);
+        }
+        return isValid;
+      });
+
+    // ✅ SUPPRESSION DU FILTRAGE STRICT - on garde tous les contacts valides
+    console.log(`✅ ${cleanedContacts.length} contacts validés (sans filtrage par rôles)`);
+
+    const sources = Array.isArray(parsed.sources) ? parsed.sources.filter(this.isValidUrl) : [];
+    
+    return {
+      contacts: cleanedContacts, // ✅ Tous les contacts sont conservés
+      sources,
+      success: true
+    };
+  } catch (error: any) {
+    console.error('❌ Erreur parsing JSON:', error);
+    return {
+      contacts: [],
+      sources: [],
+      success: false,
+      error: `Erreur parsing JSON: ${error.message}`
+    };
+  }
+}
   private isValidEmail(email: string): boolean {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email) && !email.includes('example.com');

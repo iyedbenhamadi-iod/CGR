@@ -59,7 +59,7 @@ class RequestQueue {
   async executeRequest<T>(
     requestId: string,
     requestFn: () => Promise<T>,
-    timeout: number = 180000,
+    timeout: number = 1800000,
     allowDeduplication: boolean = false // New parameter to control deduplication
   ): Promise<T> {
     // Only deduplicate if explicitly allowed (for same user requests)
@@ -249,7 +249,7 @@ export async function POST(request: NextRequest) {
     const result = await requestQueue.executeRequest(
       requestId,
       () => executeSearch(searchData, request),
-      200000, // 200s timeout for complex searches
+      2000000, // 200s timeout for complex searches
       false // Disable deduplication to prevent cross-user result sharing
     );
 
@@ -313,7 +313,10 @@ async function handleContactSearch(searchData: EnhancedSearchData, request: Next
     contactRoles: searchData.contactRoles,
     secteurActivite: searchData.secteurActivite,
     includeEmails: searchData.includeEmails,
-    includeLinkedIn: searchData.includeLinkedIn
+    includeLinkedIn: searchData.includeLinkedIn,
+    siteWebEntreprise: searchData.siteWebEntreprise, // ✅ Ajouté
+    zoneGeographique: searchData.zoneGeographique, // ✅ Ajouté
+    nombreResultats: searchData.nombreResultats // ✅ Ajouté
   });
   
   if (!response.ok) {
@@ -321,8 +324,7 @@ async function handleContactSearch(searchData: EnhancedSearchData, request: Next
     throw new Error(error.error || 'Contact search failed');
   }
   
-  return await response.json();
-}
+  return await response.json();}
 
 async function handleBrainstormingSearch(searchData: EnhancedSearchData, request: NextRequest) {
   const baseUrl = getBaseUrl(request);
