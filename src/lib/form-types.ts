@@ -20,12 +20,17 @@ export interface FormData {
   contactRoles: string[] 
   location?: string
     regionGeographique?: string // Add this line
-
+  showAutresProduits?: boolean // Nouveau champ pour afficher/masquer le champ libre
   regionPersonnalisee?: string
   typeProduitConcurrent?: 'ressort_fil' | 'ressort_feuillard' | 'piece_plastique'
   volumeProductionConcurrent?: 'petite_serie' | 'moyenne_serie' | 'grande_serie'
   nombreConcurrents?: number
   criteresAdditionnels?: string// Nouveau champ pour les rôles de contacts
+  zoneGeographiqueCompetitor?: string[];
+  zoneGeographiqueLibreCompetitor?: string;
+  produitsCGRCompetitor?: string[];
+  autresProduitsCompetitor?: string;
+  showAutresProduitsCompetitor?: boolean;
 }
 
 export interface StepProps {
@@ -51,17 +56,18 @@ export const SECTEURS_ACTIVITE = [
 ]
 
 export const ZONES_GEOGRAPHIQUES = [
-  "Rhône-Alpes",
-  "Île-de-France",
-  "PACA",
-  "Nouvelle-Aquitaine",
-  "France",
-  "Europe",
-  "Proximité usine Tricot",
-  "Proximité usine PMPC",
+  "France ",
+  "Allemagne",
+  "Espagne",
+  "Roumanie",
+  "Pologne",
+  "Brésil",
+  "Thaïlande",
+  "Chine",
+  "Mexique",
+  "Royaume-Uni"
 ]
-
-export const PRODUITS_CGR = [
+  export const PRODUITS_CGR = [
   "Ressort fil",
   "Ressort plat",
   "Pièce découpée",

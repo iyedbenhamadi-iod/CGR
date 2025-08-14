@@ -77,7 +77,7 @@ export default function StepBasicParameters({ formData, setFormData }: StepProps
     id="zoneGeographiqueLibre"
     value={formData.zoneGeographiqueLibre}
     onChange={(e) => setFormData((prev) => ({ ...prev, zoneGeographiqueLibre: e.target.value }))}
-    placeholder="Ex: Allemagne, Italie, Espagne..."
+    placeholder="Ex : Igé, Boussières, Saint-Yorre, Jiaxing..."
     className="h-12 text-base border-border focus:border-primary focus:ring-primary"
   />
 </div>
@@ -101,18 +101,7 @@ export default function StepBasicParameters({ formData, setFormData }: StepProps
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-4">
-          <Label htmlFor="motsCles" className="text-lg font-medium text-foreground">
-            Mots-clés spécifiques
-          </Label>
-          <Input
-            id="motsCles"
-            value={formData.motsCles}
-            onChange={(e) => setFormData((prev) => ({ ...prev, motsCles: e.target.value }))}
-            placeholder="moteur électrique, système de freinage..."
-            className="h-12 text-base border-border focus:border-primary focus:ring-primary"
-          />
-        </div>
+
       </div>
     </div>
   )

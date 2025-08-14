@@ -1,4 +1,5 @@
 "use client"
+import React from "react"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,11 +23,15 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
       setFormData((prev) => ({
         ...prev,
         autresProduits: "",
-        produitsCGR: prev.produitsCGR.filter(item => !prev.autresProduits || item !== prev.autresProduits)
+        produitsCGR: prev.produitsCGR.filter(item => !prev.autresProduits || item !== prev.autresProduits),
+        showAutresProduits: false // Add this flag to track visibility
       }))
     } else {
-      // If checking, just enable the input (the actual value will be added when typing)
-      setFormData((prev) => ({ ...prev }))
+      // If checking, show the input field
+      setFormData((prev) => ({
+        ...prev,
+        showAutresProduits: true
+      }))
     }
   }
 
@@ -44,7 +49,47 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
     })
   }
 
-  const isAutresChecked = formData.autresProduits !== "" || formData.produitsCGR.some(item => !PRODUITS_CGR.includes(item))
+  // Initialize clientsExclure with static clients if not already done
+  React.useEffect(() => {
+    // FIXED: Better initialization logic - only set if empty or undefined
+    if (!formData.clientsExclure || formData.clientsExclure.trim() === '') {
+      setFormData((prev) => ({
+        ...prev,
+        clientsExclure: CLIENTS_EXISTANTS.join('\n')
+      }))
+    }
+  }, [formData.clientsExclure, setFormData])
+
+  const handleClientsExclureChange = (value: string) => {
+    // Parse user input into array (split by lines, filter empty)
+    const additionalClients = value
+      .split('\n')
+      .map(client => client.trim())
+      .filter(client => client !== '')
+
+    // Combine static clients with additional ones and convert back to string
+    const allClientsToExclude = [...CLIENTS_EXISTANTS, ...additionalClients].join('\n')
+
+    setFormData((prev) => ({
+      ...prev,
+      clientsExclure: allClientsToExclude
+    }))
+  }
+
+  // Fixed: Use a dedicated flag for checkbox state or check if field should be visible
+  const isAutresChecked = formData.showAutresProduits || 
+                          (formData.autresProduits !== "" && formData.autresProduits !== undefined) || 
+                          formData.produitsCGR.some(item => !PRODUITS_CGR.includes(item))
+
+  // ADDED: Get the additional clients (those not in CLIENTS_EXISTANTS)
+  const getAdditionalClients = () => {
+    if (!formData.clientsExclure) return '';
+    
+    return formData.clientsExclure
+      .split('\n')
+      .filter(client => client.trim() !== '' && !CLIENTS_EXISTANTS.includes(client.trim()))
+      .join('\n');
+  }
 
   return (
     <div className="space-y-8">
@@ -124,46 +169,43 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
           Clients existants à exclure
         </Label>
         <div className="space-y-3">
-          <div className="flex flex-wrap gap-3">
-            {CLIENTS_EXISTANTS.map((client) => (
-              <Badge
-                key={client}
-                variant="secondary"
-                className="text-base px-4 py-1.5 rounded-full font-normal bg-primary/10 text-primary"
-              >
-                {client}
-              </Badge>
-            ))}
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">Clients existants (automatiquement exclus) :</p>
+            <div className="flex flex-wrap gap-3">
+              {CLIENTS_EXISTANTS.map((client) => (
+                <Badge
+                  key={client}
+                  variant="secondary"
+                  className="text-base px-4 py-1.5 rounded-full font-normal bg-primary/10 text-primary"
+                >
+                  {client}
+                </Badge>
+              ))}
+            </div>
           </div>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">Clients supplémentaires à exclure :</p>
           <Textarea
             id="clientsExclure"
-            value={formData.clientsExclure}
-            onChange={(e) => setFormData((prev) => ({ ...prev, clientsExclure: e.target.value }))}
+            value={getAdditionalClients()}
+            onChange={(e) => handleClientsExclureChange(e.target.value)}
             placeholder="Ajouter d'autres clients à exclure (un par ligne)..."
             rows={2}
             className="min-h-[70px] text-base border-border focus:border-primary focus:ring-primary"
           />
+          </div>
         </div>
       </div>
 
-      {/* Usines CGR */}
-      <div className="space-y-4">
-        <Label className="text-lg font-medium text-foreground">Usines CGR de référence (pour recherche locale)</Label>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-          {USINES_CGR.map((usine) => (
-            <div key={usine} className="flex items-center space-x-3">
-              <Checkbox
-                id={usine}
-                checked={formData.usinesCGR.includes(usine)}
-                onCheckedChange={(checked) => handleArrayChange("usinesCGR", usine, checked as boolean)}
-              />
-              <Label htmlFor={usine} className="text-base text-muted-foreground cursor-pointer">
-                {usine}
-              </Label>
-            </div>
-          ))}
+      {/* ADDED: Debug information - remove in production */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="space-y-2 p-4 bg-gray-100 rounded border">
+          <p className="text-sm font-medium">Debug - Clients à exclure:</p>
+          <pre className="text-xs bg-white p-2 rounded border overflow-auto max-h-32">
+            {JSON.stringify(formData.clientsExclure, null, 2)}
+          </pre>
         </div>
-      </div>
+      )}
     </div>
   )
 }

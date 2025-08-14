@@ -27,7 +27,7 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
   const [formData, setFormData] = useState<FormData>({
     typeRecherche: "",
     secteursActivite: [],
-    zoneGeographique: ["France"],
+    zoneGeographique: [],
     tailleEntreprise: "",
     motsCles: "",
     produitsCGR: [],

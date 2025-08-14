@@ -1193,30 +1193,47 @@ if (!debugHasResults && totalFound > 0) {
         </div>
       )}
 
-      {searchType === "contacts" && (
-        <div className="space-y-6">
-          {contacts && contacts.length > 0 ? (
-            <>
-              <h3 className="text-2xl font-bold text-foreground">Contacts identifiés ({contacts.length})</h3>
-              <div className="grid gap-6">
-                {contacts.map((contact, index) => (
-                  <ContactCard key={index} contact={contact} />
-                ))}
-              </div>
-            </>
-          ) : (
-            <Card className="border-orange-400 bg-orange-50 shadow-lg rounded-xl">
-              <CardContent className="p-8 text-center">
-                <AlertCircle className="w-16 h-16 text-orange-600 mx-auto mb-6" />
-                <p className="text-orange-800 font-bold text-xl">Aucun contact trouvé</p>
-                <p className="text-orange-700 text-base mt-2">
-                  La recherche a été effectuée mais aucun contact ne correspond aux critères.
+
+{searchType === "contacts" && (
+  <div className="space-y-6">
+    {contacts && contacts.length > 0 ? (
+      <>
+        <h3 className="text-2xl font-bold text-foreground">Contacts identifiés ({contacts.length})</h3>
+        
+        {/* NOUVEAU : Commentaire d'information sur LinkedIn */}
+        <Card className="bg-blue-50 border border-blue-200 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-blue-800 font-medium">Information importante</p>
+                <p className="text-sm text-blue-700 mt-1">
+                  L'outil ne permet pas toujours d'identifier le bon lien LinkedIn. Nous vous recommandons de vérifier manuellement les profils LinkedIn avant de prendre contact.
                 </p>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-6">
+          {contacts.map((contact, index) => (
+            <ContactCard key={index} contact={contact} />
+          ))}
         </div>
-      )}
+      </>
+    ) : (
+      <Card className="border-orange-400 bg-orange-50 shadow-lg rounded-xl">
+        <CardContent className="p-8 text-center">
+          <AlertCircle className="w-16 h-16 text-orange-600 mx-auto mb-6" />
+          <p className="text-orange-800 font-bold text-xl">Aucun contact trouvé</p>
+          <p className="text-orange-700 text-base mt-2">
+            La recherche a été effectuée mais aucun contact ne correspond aux critères.
+          </p>
+        </CardContent>
+      </Card>
+    )}
+  </div>
+)}
 
 {searchType === "competitor-identification" && displayCompetitors.length > 0 && (
   <div className="space-y-6">

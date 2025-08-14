@@ -66,7 +66,9 @@ export class PerplexityEnterpriseClient {
         zone: allZones.join(', '),
         taille: searchData.tailleEntreprise || 'Toutes tailles',
         produits: searchData.produitsCGR?.join(', ') || 'Tous produits CGR',
-        volume: searchData.volumePieces?.[0]?.toLocaleString() || 'Non spécifié'
+        volume: searchData.volumePieces?.[0]?.toLocaleString() || 'Non spécifié',
+        // ADDED: Log clients to exclude for debugging
+        clientsExclure: searchData.clientsExclure || 'Aucun'
       });
       
       const response = await axios.post(
@@ -219,10 +221,25 @@ Pour chaque entreprise potentielle, tu DOIS rechercher:
   }
 
   private buildEnterpriseSearchPrompt(data: EnterpriseSearchData): string {
-    const excludeClients = [
-      'Forvia', 'Valeo', 'Schneider Electric', 'Dassault Aviation', 'Thales', 'Safran',
-      ...(data.clientsExclure ? data.clientsExclure.split('\n').filter(Boolean) : [])
-    ];
+    // FIXED: Better handling of clients to exclude
+    const staticClients = ['Forvia', 'Valeo', 'Schneider Electric', 'Dassault Aviation', 'Thales', 'Safran'];
+    
+    let additionalClients: string[] = [];
+    if (data.clientsExclure && data.clientsExclure.trim() !== '') {
+      additionalClients = data.clientsExclure
+        .split('\n')
+        .map(client => client.trim())
+        .filter(client => client !== '' && !staticClients.includes(client));
+    }
+    
+    const excludeClients = [...staticClients, ...additionalClients];
+
+    // ADDED: Debug logging for clients to exclude
+    console.log('🚫 Clients à exclure:', {
+      static: staticClients,
+      additional: additionalClients,
+      total: excludeClients
+    });
 
     // ✅ FIXED: Proper sector handling - combine and filter properly
     const allSectors = [
@@ -259,7 +276,8 @@ Pour chaque entreprise potentielle, tu DOIS rechercher:
       secteursActivite: data.secteursActivite,
       zoneGeo,
       allZones,
-      produitsCGRSpecifiques
+      produitsCGRSpecifiques,
+      excludeClients
     });
 
     return `RECHERCHE CIBLÉE: ${data.nombreResultats} entreprises FABRICANTES pour CGR International
@@ -293,6 +311,7 @@ ${this.getTailleEntrepriseGuidance(tailleEntreprise)}
 **Exclusions absolues:** ${excludeClients.join(', ')}
 - Éviter ces entreprises et leurs filiales
 - Exclure les concurrents directs
+${additionalClients.length > 0 ? `- Clients supplémentaires à éviter: ${additionalClients.join(', ')}` : ''}
 
 **FOCUS FABRICANTS - RECHERCHE OBLIGATOIRE DÉTAILLÉE:**
 

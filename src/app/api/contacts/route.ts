@@ -85,6 +85,7 @@ interface ContactRequest {
   secteurActivite?: string;
   includeEmails?: boolean;
   includeLinkedIn?: boolean;
+  
   contactRoles?: string[]; // New field for specific contact roles
   siteWebEntreprise?: string; // Optional website field
   nombreResultats?: number; // Number of results requested
