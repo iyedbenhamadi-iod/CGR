@@ -434,42 +434,35 @@ RETOURNE UNIQUEMENT LE JSON SANS AUCUN TEXTE ADDITIONNEL:
   }
 
   private validateAndCleanEnterprises(enterprises: any[]): Enterprise[] {
-    return enterprises
-      .filter(enterprise => {
-        if (!enterprise || typeof enterprise !== 'object') return false;
-        if (!enterprise.nom_entreprise || typeof enterprise.nom_entreprise !== 'string') return false;
-        if (!enterprise.description_activite || typeof enterprise.description_activite !== 'string') return false;
-        if (!enterprise.potentiel_cgr || typeof enterprise.potentiel_cgr !== 'object') return false;
-        
-        return true;
-      })
-      .map(enterprise => ({
-        nom_entreprise: String(enterprise.nom_entreprise).trim(),
-        site_web: this.cleanWebsiteUrl(enterprise.site_web || ''),
-        description_activite: String(enterprise.description_activite).trim(),
-        produits_entreprise: Array.isArray(enterprise.produits_entreprise) 
-          ? enterprise.produits_entreprise.filter((p: any) => p && typeof p === 'string').map((p: any) => String(p).trim())
-          : [],
-        potentiel_cgr: {
-          produits_cibles_chez_le_prospect: Array.isArray(enterprise.potentiel_cgr?.produits_cibles_chez_le_prospect) 
-            ? enterprise.potentiel_cgr.produits_cibles_chez_le_prospect.filter((p: any) => p && typeof p === 'string').map((p: any) => String(p).trim())
-            : [],
-          produits_cgr_a_proposer: Array.isArray(enterprise.potentiel_cgr?.produits_cgr_a_proposer) 
-            ? enterprise.potentiel_cgr.produits_cgr_a_proposer.filter((p: any) => p && typeof p === 'string').map((p: any) => String(p).trim())
-            : [],
-          argumentaire_approche: String(enterprise.potentiel_cgr?.argumentaire_approche || '').trim()
-        },
-        fournisseur_actuel_estimation: String(enterprise.fournisseur_actuel_estimation || 'Non spécifié').trim(),
-        sources: Array.isArray(enterprise.sources) 
-          ? enterprise.sources.filter((s: any) => s && typeof s === 'string').map((s: any) => String(s).trim())
-          : [],
-        taille_entreprise: String(enterprise.taille_entreprise || 'Non spécifié').trim(),
-        volume_pieces_estime: String(enterprise.volume_pieces_estime || 'Non spécifié').trim(),
-        zone_geographique: String(enterprise.zone_geographique || 'Non spécifié').trim()
-      }))
-      .slice(0, 15);
-  }
+  return enterprises
+    .map(enterprise => {
+      // Mapping flexible
+      const nom = enterprise.nom_entreprise || enterprise.name || '';
+      const site = enterprise.site_web || enterprise.website || '';
+      const desc = enterprise.description_activite || enterprise.description || enterprise.manufactured_products || '';
+      const produits = enterprise.produits_entreprise 
+        || (enterprise.manufactured_products ? [enterprise.manufactured_products] : []);
 
+      return {
+        nom_entreprise: String(nom).trim(),
+        site_web: this.cleanWebsiteUrl(site),
+        description_activite: String(desc).trim(),
+        produits_entreprise: Array.isArray(produits) ? produits.map((p: any) => String(p).trim()) : [],
+        potentiel_cgr: {
+          produits_cibles_chez_le_prospect: enterprise.potentiel_cgr?.produits_cibles_chez_le_prospect || [],
+          produits_cgr_a_proposer: enterprise.potentiel_cgr?.produits_cgr_a_proposer || [],
+          argumentaire_approche: enterprise.potentiel_cgr?.argumentaire_approche || ''
+        },
+        fournisseur_actuel_estimation: enterprise.fournisseur_actuel_estimation || 'Non spécifié',
+        sources: enterprise.sources || [],
+        taille_entreprise: enterprise.taille_entreprise || 'Non spécifié',
+        volume_pieces_estime: enterprise.volume_pieces_estime || 'Non spécifié',
+        zone_geographique: enterprise.zone_geographique || enterprise.address || 'Non spécifié'
+      };
+    })
+    .filter(e => e.nom_entreprise !== '')
+    .slice(0, 15);
+}
   private cleanWebsiteUrl(url: string): string {
     if (!url || url.trim() === '') return '';
     

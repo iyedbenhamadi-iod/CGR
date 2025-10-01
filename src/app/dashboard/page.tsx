@@ -64,7 +64,7 @@ export default function Dashboard() {
       typeRecherche: "entreprises",
       secteurActiviteLibre: marketName, // Use libre field for custom market name
       secteursActivite: [], // Leave standard sectors empty
-      produitsCGR: cgrProducts, // Pre-fill CGR products from the opportunity
+      produitsCGR: [], // Pre-fill CGR products from the opportunity
       zoneGeographique: [],
       tailleEntreprise: "",
       motsCles: "",
