@@ -1,21 +1,23 @@
 "use client"
 
 import { useState } from "react"
-import ResultsDisplay from "@/components/ui/ResultsDisplay" // Assuming this component exists
+import ResultsDisplay from "@/components/ui/ResultsDisplay"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { TriangleAlert, Loader2, Undo2 } from "lucide-react" // Using Lucide icons for alerts
+import { TriangleAlert, Loader2, Undo2 } from "lucide-react"
 import SearchWizard from "@/components/searchWizard"
-import { Button } from "@/components/ui/button" // Import Button component
+import { Button } from "@/components/ui/button"
+import type { FormData } from "@/lib/form-types"
 
 export default function Dashboard() {
   const [results, setResults] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [prefillData, setPrefillData] = useState<Partial<FormData> | undefined>(undefined)
 
   const handleSearch = async (searchData: any) => {
     setLoading(true)
     setError("")
-    setResults(null) // Clear previous results
+    setResults(null)
     console.log("Frontend: Initiating search with data:", searchData)
     try {
       const response = await fetch("/api/search", {
@@ -31,7 +33,6 @@ export default function Dashboard() {
       }
       const data = await response.json()
       console.log("Frontend: 🔍 API Response received:", data)
-      // Transform the API response to match ResultsDisplay expectations
       const transformedData = transformApiResponse(data)
       console.log("Frontend: 🔄 Transformed Data for ResultsDisplay:", transformedData)
       setResults(transformedData)
@@ -46,18 +47,42 @@ export default function Dashboard() {
   const handleNewSearch = () => {
     setResults(null)
     setError("")
+    setPrefillData(undefined) // Clear any prefill data
+  }
+
+  // NEW: Handler for launching company search from brainstorming results
+  const handleSearchFromBrainstorming = (marketName: string, cgrProducts: string[]) => {
+    console.log("🚀 Launching company search from brainstorming:", { marketName, cgrProducts })
+    
+    // Reset results to show wizard
+    setResults(null)
+    setError("")
+    
+    // Set prefill data - the wizard will auto-navigate to step 2
+    setPrefillData({
+      typeRecherche: "entreprises",
+      secteurActiviteLibre: marketName, // Use libre field for custom market name
+      secteursActivite: [], // Leave standard sectors empty
+      produitsCGR: cgrProducts, // Pre-fill CGR products from the opportunity
+      zoneGeographique: [],
+      tailleEntreprise: "",
+      motsCles: "",
+      clientsExclure: "",
+      usinesCGR: [],
+      nombreResultats: 10,
+    })
   }
 
   const transformApiResponse = (data: any) => {
+    // ... keep all your existing transformation logic ...
     const baseResponse = {
-      searchType: data.searchType || data.type, // Use searchType if available, fallback to type
+      searchType: data.searchType || data.type,
       totalFound: data.totalFound || 0,
       cached: data.cached || false,
       sources: data.sources || [],
-      searchId: data.searchId || undefined, // Pass searchId if available
+      searchId: data.searchId || undefined,
     }
 
-    // Debug log to understand the data structure
     console.log("🔍 Transform API Response - Input data:", {
       searchType: baseResponse.searchType,
       dataKeys: Object.keys(data),
@@ -117,7 +142,6 @@ export default function Dashboard() {
         }
       case "competitor-identification":
       case "identification_concurrents":
-        // FIXED: Handle competitor identification properly
         console.log("🔧 Transforming competitor-identification data:", {
           competitors: data.competitors?.length || 0,
           statistics: data.statistics || {},
@@ -194,16 +218,13 @@ export default function Dashboard() {
               volume_pieces_estime: prospect.volume_pieces_estime || "Non spécifié",
               zone_geographique: prospect.zone_geographique || "Non spécifiée",
             })) || [],
-          // Include additional analyses if present
           marketAnalysis: data.marketAnalysis || undefined,
           competitorAnalysis: data.competitorAnalysis || undefined,
         }
       default:
         console.warn("Unknown search type:", baseResponse.searchType)
-        // Return the base response with all possible data fields
         return {
           ...baseResponse,
-          // Try to map common fields that might be present
           competitors: data.competitors || [],
           prospects: data.prospects || [],
           contacts: data.contacts || [],
@@ -217,7 +238,11 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 text-gray-900 flex flex-col items-center justify-center py-20 px-4 sm:px-6 lg:px-8">
       {!results ? (
-        <SearchWizard onSearch={handleSearch} loading={loading} />
+        <SearchWizard 
+          onSearch={handleSearch} 
+          loading={loading} 
+          prefillData={prefillData} 
+        />
       ) : (
         <div className="w-full max-w-5xl mx-auto flex flex-col items-center">
           <div className="flex justify-center mb-8">
@@ -226,7 +251,10 @@ export default function Dashboard() {
               Nouvelle recherche
             </Button>
           </div>
-          <ResultsDisplay {...results} />
+          <ResultsDisplay 
+            {...results} 
+            onSearchFromBrainstorming={handleSearchFromBrainstorming}
+          />
         </div>
       )}
 

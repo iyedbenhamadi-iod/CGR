@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       
     const singleResult = await withTimeout(
       competitorClient.identifyCompetitors(searchRequest),
-      180000
+      1800000
     );
       
     if (!singleResult.success || !singleResult.competitors) {

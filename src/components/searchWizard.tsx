@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Loader2, ChevronLeft, ChevronRight, Search } from "lucide-react"
@@ -20,9 +20,10 @@ import StepContactroles from "./steps/step-contact-roles"
 interface SearchWizardProps {
   onSearch: (data: FormData) => void
   loading: boolean
+  prefillData?: Partial<FormData> // NEW: Accept prefilled data
 }
 
-export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
+export default function SearchWizard({ onSearch, loading, prefillData }: SearchWizardProps) {
   const [currentStep, setCurrentStep] = useState(0)
   const [formData, setFormData] = useState<FormData>({
     typeRecherche: "",
@@ -31,7 +32,6 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
     tailleEntreprise: "",
     motsCles: "",
     produitsCGR: [],
-    volumePieces: [100000],
     clientsExclure: "",
     usinesCGR: [],
     nomConcurrent: "",
@@ -40,15 +40,32 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
     nombreResultats: 10,
     contactRoles: [],
     secteurActiviteLibre: '',
-   zoneGeographiqueLibre: '',
-    // Nouveaux champs pour l'identification de concurrents
-  
+    zoneGeographiqueLibre: '',
     regionPersonnalisee: "",
     typeProduitConcurrent: undefined,
     volumeProductionConcurrent: undefined,
     nombreConcurrents: 10,
     criteresAdditionnels: "",
   })
+
+  // NEW: Handle prefilled data from brainstorming
+  useEffect(() => {
+    if (prefillData) {
+      console.log("📋 Applying prefill data:", prefillData)
+      setFormData(prev => ({
+        ...prev,
+        ...prefillData
+      }))
+      
+      // Auto-navigate to basic parameters step if coming from brainstorming
+      if (prefillData.typeRecherche === "entreprises") {
+        // Small delay to ensure smooth transition
+        setTimeout(() => {
+          setCurrentStep(1) // Move to step 1 (basic parameters)
+        }, 100)
+      }
+    }
+  }, [prefillData])
 
   const steps = [
     {
@@ -80,12 +97,6 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
       name: "Contexte CGR",
       component: StepCGRContext,
       condition: formData.typeRecherche === "brainstorming" || formData.typeRecherche === "entreprises",
-    },
-    {
-      id: "advanced-params",
-      name: "Paramètres Avancés",
-      component: StepAdvancedParameters,
-      condition: formData.typeRecherche === "entreprises",
     },
     {
       id: "competitor-contact-roles",
@@ -129,7 +140,10 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
               Plateforme de Prospection IA
             </CardTitle>
             <CardDescription className="text-xl text-muted-foreground mt-2">
-              Optimisez votre recherche de prospects avec l'intelligence artificielle
+              {prefillData?.secteurActiviteLibre 
+                ? `Recherche d'entreprises dans: ${prefillData.secteurActiviteLibre}`
+                : "Optimisez votre recherche de prospects avec l'intelligence artificielle"
+              }
             </CardDescription>
           </div>
         </div>
@@ -188,7 +202,7 @@ export default function SearchWizard({ onSearch, loading }: SearchWizardProps) {
             {currentStep < totalSteps - 1 ? (
               <Button
                 onClick={handleNext}
-                disabled={loading || !formData.typeRecherche} // Basic validation for first step
+                disabled={loading || !formData.typeRecherche}
                 className="h-12 px-6 text-lg font-semibold bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 Suivant

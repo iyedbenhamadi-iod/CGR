@@ -143,25 +143,6 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
         </div>
       </div>
 
-      {/* Volume de pièces */}
-      <div className="space-y-4">
-        <Label className="text-lg font-medium text-foreground">Volume de pièces annuel attendu</Label>
-        <div className="px-3 pt-2">
-          <Slider
-            value={formData.volumePieces}
-            onValueChange={(value) => setFormData((prev) => ({ ...prev, volumePieces: value }))}
-            max={10000000}
-            min={1000}
-            step={10000}
-            className="w-full"
-          />
-          <div className="flex justify-between text-base text-muted-foreground mt-3">
-            <span>1K</span>
-            <span className="font-semibold text-primary">{formData.volumePieces[0].toLocaleString()} pièces/an</span>
-            <span>10M</span>
-          </div>
-        </div>
-      </div>
 
       {/* Clients à exclure */}
       <div className="space-y-4">
@@ -197,15 +178,7 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
         </div>
       </div>
 
-      {/* ADDED: Debug information - remove in production */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="space-y-2 p-4 bg-gray-100 rounded border">
-          <p className="text-sm font-medium">Debug - Clients à exclure:</p>
-          <pre className="text-xs bg-white p-2 rounded border overflow-auto max-h-32">
-            {JSON.stringify(formData.clientsExclure, null, 2)}
-          </pre>
-        </div>
-      )}
+    
     </div>
   )
 }

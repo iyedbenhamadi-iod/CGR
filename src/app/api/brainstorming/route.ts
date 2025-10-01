@@ -1,9 +1,8 @@
 // app/api/brainstorming/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { OpenAIBrainstormingClient } from '@/lib/openai';
+import { OpenAIBrainstormingClient } from '@/lib/openai'; // Keep the same import
 import { getCachedResult, setCachedResult, generateCacheKey } from '@/lib/cache';
 
-// Add timeout wrapper for API calls
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
   return Promise.race([
     promise,
@@ -15,9 +14,14 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
 
 interface BrainstormingData {
   secteursActivite: string[];
+  secteurActiviteLibre?: string;
   zoneGeographique: string[];
   produitsCGR: string[];
   clientsExclure: string;
+  tailleEntreprise?: string;
+  usinesCGR?: string[];
+  motsCles?: string;
+  nombreResultats?: number;
 }
 
 interface BrainstormingRequest {
@@ -27,6 +31,10 @@ interface BrainstormingRequest {
   zoneGeographiqueLibre?: string;
   produitsCGR?: string[];
   clientsExclure?: string;
+  tailleEntreprise?: string;
+  usinesCGR?: string[];
+  motsCles?: string;
+  nombreResultats?: number;
 }
 
 export async function POST(request: NextRequest) {
@@ -53,17 +61,22 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log('🧠 Recherche brainstorming demandée:', JSON.stringify({
-      ...requestData,
-      allSecteurs,
-      allZones
-    }, null, 2));
+    // Extract niche specification
+    const secteurGeneral = requestData.secteursActivite[0] || allSecteurs[0];
+    const nicheSpecifique = requestData.secteurActiviteLibre?.trim() || '';
     
-    // Check cache with better key generation
+    console.log('🧠 Recherche brainstorming demandée:', {
+      secteurGeneral,
+      nicheSpecifique: nicheSpecifique || 'Mode exploratoire',
+      produits: requestData.produitsCGR,
+      zones: allZones
+    });
+    
+    // Enhanced cache key including niche
     const cacheKey = generateCacheKey(
-      `brainstorming-${allSecteurs.join(',')}`,
+      `brainstorming-${secteurGeneral}-${nicheSpecifique}`,
       allZones.join(',') || 'global',
-      [`brainstorming-${Date.now()}`]
+      requestData.produitsCGR || []
     );
     
     const cachedResult = await getCachedResult(cacheKey);
@@ -72,28 +85,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ...cachedResult, cached: true });
     }
     
-    // Prepare data with defaults - use combined arrays
+    // Prepare data with defaults
     const brainstormingData: BrainstormingData = {
       secteursActivite: allSecteurs,
+      secteurActiviteLibre: nicheSpecifique,
       zoneGeographique: allZones.length > 0 ? allZones : ['France'],
       produitsCGR: requestData.produitsCGR && requestData.produitsCGR.length > 0 
         ? requestData.produitsCGR 
         : ['Ressorts fil', 'Ressorts plats', 'Pièces découpées', 'Formage de tubes', 'Assemblages automatisés', 'Mécatronique', 'Injection plastique'],
-      clientsExclure: requestData.clientsExclure || ''
+      clientsExclure: requestData.clientsExclure || '',
+      tailleEntreprise: requestData.tailleEntreprise,
+      usinesCGR: requestData.usinesCGR,
+      motsCles: requestData.motsCles,
+      nombreResultats: requestData.nombreResultats || 5
     };
     
-    console.log('📋 Données brainstorming finales:', brainstormingData);
+    console.log('📋 Données brainstorming finales:', {
+      ...brainstormingData,
+      modeRecherche: nicheSpecifique ? 'Ciblé sur niche' : 'Exploratoire'
+    });
     
-    // Generate market analysis with OpenAI (with timeout)
+    // Generate market analysis with Perplexity (through OpenAIBrainstormingClient)
     const openaiClient = new OpenAIBrainstormingClient();
     const marketResult = await withTimeout(
       openaiClient.generateMarketBrainstorming(brainstormingData),
-      150000 // 15 seconds for brainstorming
+      60000 // 60 seconds for Perplexity (includes web search)
     );
     
-    console.log('🎯 Résultat OpenAI:', { 
+    console.log('🎯 Résultat:', { 
       success: marketResult.success, 
-      marketsCount: marketResult.markets?.length, 
+      marketsCount: marketResult.markets?.length,
+      modeRecherche: marketResult.mode_recherche,
+      nicheSpecifiee: marketResult.niche_specifiee,
       error: marketResult.error 
     });
     
@@ -110,31 +133,47 @@ export async function POST(request: NextRequest) {
       marketOpportunities: marketResult.markets || [],
       totalFound: marketResult.markets?.length || 0,
       cached: false,
-      sources: [],
+      sources: marketResult.sources || [],
+      analyseTendances: marketResult.analyse_tendances,
+      modeRecherche: marketResult.mode_recherche,
+      nicheSpecifiee: marketResult.niche_specifiee,
       debug: {
         marketsGenerated: marketResult.markets?.length || 0,
-        searchCriteria: brainstormingData,
+        searchCriteria: {
+          secteurGeneral,
+          nicheSpecifique: nicheSpecifique || 'Aucune (mode exploratoire)',
+          produits: brainstormingData.produitsCGR,
+          zones: brainstormingData.zoneGeographique,
+          tailleEntreprise: brainstormingData.tailleEntreprise
+        },
         originalProduitsCGR: requestData.produitsCGR,
         usedDefaultProducts: !requestData.produitsCGR || requestData.produitsCGR.length === 0,
         sectorsUsed: allSecteurs,
-        zonesUsed: allZones
+        zonesUsed: allZones,
+        perplexityUsed: true,
+        realTimeSearch: true
       }
     };
     
     // Save to cache only if we have results
     if (marketResult.markets && marketResult.markets.length > 0) {
-      await setCachedResult(cacheKey, response, 86400); // 24h cache
-      console.log('💾 Résultats sauvegardés en cache');
+      // Shorter cache for niche-specific (more dynamic data)
+      const cacheTime = nicheSpecifique ? 43200 : 86400; // 12h for niche, 24h for general
+      await setCachedResult(cacheKey, response, cacheTime);
+      console.log(`💾 Résultats sauvegardés en cache (${cacheTime/3600}h)`);
     }
     
-    console.log('✅ Brainstorming terminé:', marketResult.markets?.length || 0, 'opportunités trouvées');
+    console.log('✅ Brainstorming terminé:', {
+      opportunites: marketResult.markets?.length || 0,
+      mode: nicheSpecifique ? 'Ciblé' : 'Exploratoire',
+      niche: nicheSpecifique || 'N/A'
+    });
     
     return NextResponse.json(response);
     
   } catch (error: any) {
     console.error('❌ Erreur brainstorming:', error);
     
-    // Enhanced error handling with specific error types
     if (error.message?.includes('timed out')) {
       return NextResponse.json(
         { 
@@ -143,6 +182,17 @@ export async function POST(request: NextRequest) {
           type: 'timeout'
         },
         { status: 408 }
+      );
+    }
+    
+    if (error.message?.includes('PERPLEXITY_API_KEY')) {
+      return NextResponse.json(
+        { 
+          error: 'Configuration manquante',
+          details: 'Clé API Perplexity non configurée',
+          type: 'config_error'
+        },
+        { status: 500 }
       );
     }
     

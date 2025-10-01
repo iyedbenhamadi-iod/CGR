@@ -129,7 +129,7 @@ interface ResultsDisplayProps {
   enterprises?: Prospect[]
   marketOpportunities?: MarketOpportunity[]
   competitorAnalysis?: CompetitorAnalysis
-  competitors?: Competitor[] // ✅ Déjà présent
+  competitors?: Competitor[]
   contacts?: Contact[]
   totalFound: number
   cached: boolean
@@ -144,7 +144,9 @@ interface ResultsDisplayProps {
     marches_identifies?: string[]
     specialites_identifiees?: string[]
   }
+  onSearchFromBrainstorming?: (marketName: string, cgrProducts: string[]) => void // NEW
 }
+
 
 function isValidUrl(url: string): boolean {
   if (!url || typeof url !== "string" || url.trim() === "") {
@@ -738,6 +740,7 @@ export default function ResultsDisplay({
   cached,
   sources,
   statistics,
+  onSearchFromBrainstorming, // ← ADD THIS LINE
 }: ResultsDisplayProps) {
 
 // Replace the variables assignment and hasAnyResults function with this:
@@ -958,55 +961,70 @@ if (!debugHasResults && totalFound > 0) {
 
       {/* Affichage selon le type de recherche */}
       {searchType === "brainstorming" && marketOpportunities && marketOpportunities.length > 0 && (
-        <div className="space-y-6">
-          <h3 className="text-2xl font-bold text-foreground">Opportunités de marché identifiées</h3>
-          <div className="grid gap-6">
-            {marketOpportunities.map((opportunity, index) => (
-              <Card
-                key={index}
-                className="bg-card border border-border/50 shadow-md hover:shadow-lg transition-shadow duration-200"
-              >
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-3 text-xl font-bold text-primary">
-                    <Lightbulb className="w-6 h-6" />
-                    {opportunity.nom_marche}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-5 pt-4">
-                  <div>
-                    <h5 className="font-semibold text-lg text-foreground mb-2">Justification</h5>
-                    <p className="text-muted-foreground text-base">{opportunity.justification}</p>
-                  </div>
-                  <div>
-                    <h5 className="font-semibold text-lg text-foreground mb-2">Produits CGR applicables</h5>
-                    <div className="flex flex-wrap gap-2">
-                      {opportunity.produits_cgr_applicables.map((produit, idx) => (
-                        <Badge key={idx} className="text-sm bg-primary/10 text-primary px-3 py-1">
-                          {produit}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <h5 className="font-semibold text-lg text-foreground mb-2">Entreprises leaders</h5>
-                    <div className="flex flex-wrap gap-2">
-                      {opportunity.exemples_entreprises.map((entreprise, idx) => (
-                        <Badge
-                          key={idx}
-                          variant="outline"
-                          className="text-sm px-3 py-1 bg-secondary text-secondary-foreground"
-                        >
-                          {entreprise}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
+  <div className="space-y-6">
+    <h3 className="text-2xl font-bold text-foreground">Opportunités de marché identifiées</h3>
+    <div className="grid gap-6">
+      {marketOpportunities.map((opportunity, index) => (
+        <Card
+          key={index}
+          className="bg-card border border-border/50 shadow-md hover:shadow-lg transition-shadow duration-200"
+        >
+          <CardHeader className="pb-4">
+            <div className="flex items-start justify-between">
+              <CardTitle className="flex items-center gap-3 text-xl font-bold text-primary">
+                <Lightbulb className="w-6 h-6" />
+                {opportunity.nom_marche}
+              </CardTitle>
+              {onSearchFromBrainstorming && (
+                <Button
+                  onClick={() => onSearchFromBrainstorming(
+                    opportunity.nom_marche, 
+                    opportunity.produits_cgr_applicables
+                  )}
+                  className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                  size="sm"
+                >
+                  <Building2 className="w-4 h-4 mr-2" />
+                  Rechercher des entreprises
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5 pt-4">
+            <div>
+              <h5 className="font-semibold text-lg text-foreground mb-2">Justification</h5>
+              <p className="text-muted-foreground text-base">{opportunity.justification}</p>
+            </div>
+            <div>
+              <h5 className="font-semibold text-lg text-foreground mb-2">Produits CGR applicables</h5>
+              <div className="flex flex-wrap gap-2">
+                {opportunity.produits_cgr_applicables.map((produit, idx) => (
+                  <Badge key={idx} className="text-sm bg-primary/10 text-primary px-3 py-1">
+                    {produit}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h5 className="font-semibold text-lg text-foreground mb-2">Entreprises leaders</h5>
+              <div className="flex flex-wrap gap-2">
+                {opportunity.exemples_entreprises.map((entreprise, idx) => (
+                  <Badge
+                    key={idx}
+                    variant="outline"
+                    className="text-sm px-3 py-1 bg-secondary text-secondary-foreground"
+                  >
+                    {entreprise}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  </div>
+)}
 
       {searchType === "concurrent" && competitorAnalysis && (
         <Card className="bg-card border border-border/50 shadow-md hover:shadow-lg transition-shadow duration-200">
@@ -1248,40 +1266,7 @@ if (!debugHasResults && totalFound > 0) {
     </div>
   </div>
 )}
-      {/* Footer sources globales */}
-      {sources && sources.length > 0 && (
-        <Card className="bg-card border border-border/50 shadow-md rounded-xl">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-xl flex items-center gap-3 text-foreground font-bold">
-              <ExternalLink className="w-6 h-6 text-primary" />
-              Sources utilisées
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <div className="flex flex-wrap gap-3">
-              {[...new Set(sources)]
-                .filter((source) => isValidUrl(source))
-                .slice(0, 10)
-                .map((source, idx) => (
-                  <Button
-                    key={idx}
-                    variant="outline"
-                    size="sm"
-                    className="h-9 text-sm bg-background text-primary hover:bg-primary/5 hover:text-primary border-primary/20 rounded-md"
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    {getHostname(source)}
-                  </Button>
-                ))}
-              {[...new Set(sources)].filter((source) => isValidUrl(source)).length > 10 && (
-                <Badge variant="outline" className="text-sm bg-background text-muted-foreground px-3 py-1">
-                  +{([...new Set(sources)].filter((source) => isValidUrl(source)).length || 0) - 10} autres
-                </Badge>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
     </div>
   )
 }

@@ -10,7 +10,6 @@ export interface FormData {
   motsCles: string
   produitsCGR: string[]
   autresProduits?: string // Nouveau champ pour les autres produits
-  volumePieces: number[]
   clientsExclure: string
   usinesCGR: string[]
   nomConcurrent: string
@@ -65,7 +64,9 @@ export const ZONES_GEOGRAPHIQUES = [
   "Thaïlande",
   "Chine",
   "Mexique",
-  "Royaume-Uni"
+  "Royaume-Uni",
+  "Europe",
+  "Monde Entier"
 ]
   export const PRODUITS_CGR = [
   "Ressort fil",

@@ -1,3 +1,5 @@
+// lib/openai.ts - Enhanced with Perplexity Sonar for niche-focused brainstorming
+
 import axios from 'axios';
 
 interface MarketOpportunity {
@@ -7,15 +9,17 @@ interface MarketOpportunity {
   exemples_entreprises: string[];
   taille_entreprises_cibles: string;
   volume_pieces_estime: string;
+  sous_secteur_specifique?: string;
+  niveau_pertinence?: 'haute' | 'moyenne' | 'exploratoire';
 }
 
 interface BrainstormingData {
   secteursActivite: string[];
+  secteurActiviteLibre?: string;
   zoneGeographique: string[];
   produitsCGR: string[];
   clientsExclure: string;
   tailleEntreprise?: string;
-  volumePieces?: number[];
   usinesCGR?: string[];
   motsCles?: string;
   nombreResultats?: number;
@@ -23,12 +27,12 @@ interface BrainstormingData {
 
 export class OpenAIBrainstormingClient {
   private apiKey: string;
-  private baseUrl = 'https://api.openai.com/v1';
+  private baseUrl = 'https://api.perplexity.ai';
 
   constructor() {
-    this.apiKey = process.env.OPENAI_API_KEY!;
+    this.apiKey = process.env.PERPLEXITY_API_KEY!;
     if (!this.apiKey) {
-      throw new Error('OPENAI_API_KEY manquante');
+      throw new Error('PERPLEXITY_API_KEY manquante');
     }
   }
 
@@ -36,34 +40,36 @@ export class OpenAIBrainstormingClient {
     const prompt = this.buildBrainstormingPrompt(data);
     
     try {
-      console.log('🤖 Envoi de la requête OpenAI...');
-      console.log('📝 Prompt:', prompt.substring(0, 200) + '...');
+      console.log('🔍 Envoi de la requête Perplexity Sonar...');
+      console.log('📝 Secteur général:', data.secteursActivite);
+      console.log('🎯 Niche spécifique:', data.secteurActiviteLibre || 'À découvrir');
       
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
-          model: 'gpt-4o-mini',
+          model: 'sonar',  // Perplexity's Sonar model with real-time web search
           messages: [
             { role: 'system', content: this.getSystemPrompt() },
             { role: 'user', content: prompt }
           ],
           max_tokens: 4000,
-          temperature: 0.2,
-          response_format: { type: "json_object" }
+          temperature: 0.4,
+          return_citations: true, // Get sources from Perplexity
+          search_recency_filter: 'month' // Focus on recent market trends
         },
         {
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
           },
-          timeout: 45000
+          timeout: 60000
         }
       );
       
-      console.log('✅ Réponse OpenAI reçue');
-      return this.parseBrainstormingResponse(response.data);
+      console.log('✅ Réponse Perplexity reçue');
+      return this.parseBrainstormingResponse(response.data, data);
     } catch (error: any) {
-      console.error('❌ Erreur OpenAI API:', {
+      console.error('❌ Erreur Perplexity API:', {
         status: error.response?.status,
         message: error.message,
         data: error.response?.data
@@ -73,61 +79,65 @@ export class OpenAIBrainstormingClient {
         markets: [],
         total: 0,
         success: false,
-        error: `OpenAI API Error: ${error.response?.status || 'Unknown'} - ${error.message}`
+        error: `Perplexity API Error: ${error.response?.status || 'Unknown'} - ${error.message}`
       };
     }
   }
 
   private getSystemPrompt(): string {
-    return `Tu es un expert analyste stratégique pour CGR International, fabricant français de composants mécaniques industriels.
+    return `Tu es un expert analyste stratégique pour CGR International, fabricant français de composants mécaniques de haute précision.
 
-MISSION: Identifier exactement 5 nouveaux marchés ou applications de niche pour diversifier, EN RESPECTANT STRICTEMENT LES CONTRAINTES SPÉCIFIÉES.
+MISSION CRITIQUE: Identifier 5 opportunités de marché ULTRA-SPÉCIFIQUES et PERTINENTES basées sur:
+1. Le secteur général fourni (ex: Automobile, Médical, Aéronautique)
+2. La niche précise mentionnée (ex: "sièges automobiles", "dispositifs d'injection", "trains d'atterrissage")
 
-EXPERTISE CGR DISPONIBLE:
-- Ressorts (fil, plat, torsion) - haute précision
-- Pièces découpées de précision
+⚠️ RÈGLE D'OR DE PERTINENCE:
+- Si l'utilisateur a spécifié une NICHE (ex: "sièges automobiles"), concentre-toi EXCLUSIVEMENT sur cette niche
+- Ne propose PAS d'opportunités dans d'autres sous-secteurs de l'industrie générale
+- Exemple: Si "sièges automobiles" → propose des applications pour SIÈGES uniquement (mécanismes de réglage, systèmes de sécurité du siège, confort du siège)
+- N'élargis PAS à d'autres parties automobiles (moteur, freins, portes, etc.)
+
+Si AUCUNE niche n'est spécifiée, utilise tes recherches en temps réel pour:
+- Identifier les SOUS-SECTEURS émergents et prometteurs
+- Trouver des applications de niche avec forte croissance
+- Proposer des marchés innovants et peu saturés
+
+EXPERTISE CGR:
+- Ressorts de précision (fil, plat, torsion)
+- Pièces découpées haute précision
 - Formage de tubes
 - Assemblages automatisés
 - Mécatronique
 - Injection plastique
 
-RÈGLES ABSOLUES:
-1. PRODUITS CGR: Utilise UNIQUEMENT les produits CGR spécifiés par l'utilisateur
-2. SECTEURS: Distribue les marchés entre TOUS les secteurs spécifiés (pas seulement un seul)
-3. TAILLE ENTREPRISE: Cible les entreprises de la taille spécifiée
-4. VOLUME: Respecte les volumes de production indiqués
-
-CRITÈRES MARCHÉS:
-- Synergie technologique avec les produits CGR spécifiés
-- Marché en croissance dans les secteurs ciblés
-- Entreprises de la taille appropriée
-- Volume de production compatible
-- Qualité/précision = avantage concurrentiel
-
-IMPORTANT: Tu dois répondre UNIQUEMENT avec un JSON valide, sans texte avant ou après.
-
-Format JSON requis:
+FORMAT JSON REQUIS:
 {
   "markets": [
     {
-      "nom_marche": "Nom du marché spécifique",
-      "justification": "Analyse détaillée minimum 150 mots expliquant la pertinence pour CGR avec les produits spécifiés",
-      "produits_cgr_applicables": ["Uniquement les produits spécifiés par l'utilisateur"],
-      "exemples_entreprises": ["Entreprise 1", "Entreprise 2", "Entreprise 3"],
-      "taille_entreprises_cibles": "Taille d'entreprise spécifiée par l'utilisateur",
-      "volume_pieces_estime": "Volume compatible avec les spécifications",
-      "secteur": "Secteur d'activité du marché"
+      "nom_marche": "Nom très spécifique du marché de niche",
+      "sous_secteur_specifique": "La niche exacte (ex: 'Mécanismes de réglage de sièges automobiles')",
+      "justification": "Analyse détaillée 200+ mots: tendances marché récentes, besoins spécifiques, pourquoi CGR est pertinent, données chiffrées si disponibles",
+      "produits_cgr_applicables": ["Liste des produits CGR applicables"],
+      "exemples_entreprises": ["3-5 entreprises réelles dans cette niche exacte"],
+      "taille_entreprises_cibles": "Taille appropriée",
+      "volume_pieces_estime": "Estimation basée sur données récentes",
+      "niveau_pertinence": "haute|moyenne|exploratoire"
     }
-  ]
+  ],
+  "sources_perplexity": ["URLs des sources utilisées"],
+  "analyse_tendances": "Résumé des tendances actuelles dans la niche"
 }
 
-CONTRAINTES STRICTES:
-- Exactement 5 marchés RÉPARTIS entre TOUS les secteurs spécifiés
-- Produits CGR limités à ceux spécifiés par l'utilisateur
-- Taille d'entreprise respectée
-- Volume de pièces compatible
-- Justification minimum 150 mots par marché
-- JSON parfaitement formaté`;
+VALIDATION DE PERTINENCE:
+✅ Chaque marché doit rester dans la NICHE spécifiée
+✅ Utilise des données et tendances RÉCENTES (2024-2025)
+✅ Identifie des opportunités CONCRÈTES et ACTIONNABLES
+✅ Privilégie les marchés en CROISSANCE avec MOINS de concurrence
+✅ Cite des entreprises RÉELLES de la niche
+
+❌ Ne propose PAS d'opportunités génériques
+❌ N'élargis PAS au-delà de la niche spécifiée
+❌ Évite les marchés saturés ou trop compétitifs`;
   }
 
   private buildBrainstormingPrompt(data: BrainstormingData): string {
@@ -136,198 +146,126 @@ CONTRAINTES STRICTES:
       ...(data.clientsExclure ? data.clientsExclure.split('\n').filter(Boolean) : [])
     ];
 
-    // FIX: Use ALL sectors, not just the first one
-    const secteursCibles = data.secteursActivite.length > 0 ? data.secteursActivite : ['Industriel'];
+    const secteurGeneral = data.secteursActivite[0] || 'Industriel';
+    const nicheSpecifique = data.secteurActiviteLibre?.trim();
     const tailleEntreprise = data.tailleEntreprise || 'Toutes tailles';
-    const volumePieces = data.volumePieces && data.volumePieces.length > 0 ? data.volumePieces[0] : 50000;
-    const usinesCGR = data.usinesCGR || ['Saint-Yorre', 'PMPC', 'Igé'];
-    const motsCles = data.motsCles || '';
-    const nombreResultats = data.nombreResultats || 5;
+    const produitsCGR = data.produitsCGR.length > 0 ? data.produitsCGR : ['Ressorts fil', 'Ressorts plats'];
+    const zones = data.zoneGeographique.length > 0 ? data.zoneGeographique : ['France', 'Europe'];
 
-    // Validation des produits CGR - utiliser uniquement ceux spécifiés
-    const produitsCGRSpecifiques = data.produitsCGR.length > 0 ? data.produitsCGR : ['Ressorts fil'];
+    // Different prompt structure based on whether niche is specified
+    if (nicheSpecifique) {
+      return `🎯 RECHERCHE ULTRA-CIBLÉE - NICHE SPÉCIFIQUE
 
-    return `CONSIGNE CRITIQUE: Tu dois identifier ${nombreResultats} marchés/applications en les RÉPARTISSANT entre les secteurs suivants : "${secteursCibles.join('", "')}" en utilisant EXCLUSIVEMENT les produits CGR spécifiés.
+**CONTEXTE:**
+- Secteur général: ${secteurGeneral}
+- ⚠️ NICHE PRÉCISE À EXPLORER: "${nicheSpecifique}"
+- Produits CGR disponibles: ${produitsCGR.join(', ')}
+- Zones géographiques: ${zones.join(', ')}
+- Taille d'entreprise cible: ${tailleEntreprise}
 
-**CONTRAINTES STRICTES À RESPECTER:**
+**MISSION CRITIQUE:**
+Identifie exactement 5 opportunités de marché EXCLUSIVEMENT dans la niche "${nicheSpecifique}".
 
-**Secteurs ciblés OBLIGATOIRES (RÉPARTIR les ${nombreResultats} marchés entre ces secteurs):** 
-${secteursCibles.map((secteur, index) => `${index + 1}. ${secteur}`).join('\n')}
+⚠️ CONTRAINTE ABSOLUE: Reste dans la niche "${nicheSpecifique}" uniquement.
+Ne propose PAS d'applications dans d'autres sous-secteurs de ${secteurGeneral}.
 
-⚠️ IMPORTANT: Les ${nombreResultats} marchés doivent être RÉPARTIS entre TOUS ces secteurs. Ne te concentre pas sur un seul secteur !
+**ANALYSE REQUISE:**
+1. Recherche les tendances RÉCENTES (2024-2025) dans "${nicheSpecifique}"
+2. Identifie les besoins spécifiques non satisfaits
+3. Trouve des entreprises RÉELLES actives dans "${nicheSpecifique}"
+4. Évalue où les produits CGR (${produitsCGR.join(', ')}) peuvent apporter de la valeur
+5. Propose des applications CONCRÈTES et INNOVANTES
 
-**Produits CGR AUTORISÉS (AUCUN AUTRE):** ${produitsCGRSpecifiques.join(', ')}
-⚠️ IMPORTANT: Ne propose QUE ces produits dans tes réponses. Ignore tous les autres produits CGR.
+**EXEMPLES DE PERTINENCE:**
+✅ Bon: Pour "sièges automobiles" → Mécanismes de réglage lombaire, Systèmes anti-sous-marinage, Ressorts de confort d'assise
+❌ Mauvais: Pour "sièges automobiles" → Systèmes de freinage, Injection plastique pour tableau de bord
 
-**Taille d'entreprise ciblée:** ${tailleEntreprise}
-${tailleEntreprise === 'PME' ? '- Cibler des PME (50-250 salariés) avec des besoins spécifiques' : ''}
-${tailleEntreprise === 'ETI' ? '- Cibler des ETI (250-5000 salariés) avec des volumes moyens' : ''}
-${tailleEntreprise === 'Grande entreprise' ? '- Cibler des grandes entreprises (5000+ salariés) avec des volumes importants' : ''}
+**CLIENTS À ÉVITER:**
+${excludeClients.join(', ')}
 
-**Volume de pièces cible:** ${volumePieces.toLocaleString()} pièces/an
-- Adapter les recommandations à ce volume de production
+Utilise tes capacités de recherche en temps réel pour fournir des données actuelles et pertinentes.
+Retourne uniquement le JSON demandé.`;
+    } else {
+      // Exploratory mode - let Perplexity suggest niches
+      return `🔍 RECHERCHE EXPLORATOIRE - IDENTIFICATION DE NICHES
 
-**Zones géographiques d'intérêt:** ${data.zoneGeographique.length > 0 ? data.zoneGeographique.join(', ') : 'France et Europe'}
+**CONTEXTE:**
+- Secteur général: ${secteurGeneral}
+- Produits CGR disponibles: ${produitsCGR.join(', ')}
+- Zones géographiques: ${zones.join(', ')}
+- Taille d'entreprise cible: ${tailleEntreprise}
 
-**Usines CGR disponibles:** ${usinesCGR.join(', ')}
+**MISSION:**
+L'utilisateur cherche des opportunités dans le secteur ${secteurGeneral} mais n'a pas spécifié de niche particulière.
 
-**Mots-clés spécifiques:** ${motsCles || 'Haute précision, qualité, innovation'}
+Utilise tes capacités de recherche en temps réel pour:
+1. Identifier 5 SOUS-SECTEURS/NICHES prometteuses dans ${secteurGeneral}
+2. Privilégier les niches avec:
+   - Forte croissance récente (2024-2025)
+   - Innovations technologiques
+   - Besoins en composants de précision
+   - Moins de saturation concurrentielle
+3. Proposer des applications spécifiques où les produits CGR (${produitsCGR.join(', ')}) sont pertinents
 
-**Clients actuels à éviter:** ${excludeClients.join(', ')}
+**CRITÈRES DE SÉLECTION:**
+✅ Marchés émergents ou en transformation
+✅ Besoins de composants haute précision
+✅ Réglementations favorisant l'innovation
+✅ Entreprises de taille ${tailleEntreprise}
+✅ Présence dans ${zones.join(', ')}
 
-**OBJECTIF PRÉCIS:**
-Identifier exactement ${nombreResultats} marchés/applications en les DISTRIBUANT entre les secteurs "${secteursCibles.join('", "')}" où CGR pourrait apporter ses "${produitsCGRSpecifiques.join(', ')}" à des entreprises de taille "${tailleEntreprise}" avec un volume annuel d'environ ${volumePieces.toLocaleString()} pièces.
+**CLIENTS À ÉVITER:**
+${excludeClients.join(', ')}
 
-**RÉPARTITION SECTORIELLE OBLIGATOIRE:**
-${this.getSectorDistributionGuidance(secteursCibles, nombreResultats, produitsCGRSpecifiques)}
+**OBJECTIF:**
+Propose des niches PERTINENTES et ACTIONNABLES, pas des secteurs généraux.
+Exemple: Plutôt que "Médical" → "Dispositifs d'injection automatique" ou "Pompes à perfusion portables"
 
-**RÈGLES ABSOLUES:**
-1. Utilise UNIQUEMENT les produits "${produitsCGRSpecifiques.join(', ')}" 
-2. DISTRIBUE les ${nombreResultats} marchés entre TOUS les secteurs : "${secteursCibles.join('", "')}"
-3. Cible des entreprises de taille "${tailleEntreprise}"
-4. Volume compatible avec ${volumePieces.toLocaleString()} pièces/an
-5. Évite les clients mentionnés dans la liste d'exclusion
-6. Chaque marché doit spécifier son secteur d'appartenance
-
-**VALIDATION:**
-- Chaque marché doit utiliser au moins un des produits spécifiés
-- Les marchés doivent couvrir TOUS les secteurs spécifiés
-- La taille d'entreprise doit correspondre à "${tailleEntreprise}"
-- Le volume doit être réaliste pour ${volumePieces.toLocaleString()} pièces/an
-
-Retourne uniquement le JSON demandé, sans aucun texte supplémentaire.`;
-  }
-
-  private getSectorDistributionGuidance(secteurs: string[], nombreResultats: number, produitsCGR: string[]): string {
-    const produitsStr = produitsCGR.join(', ');
-    const marcheParSecteur = Math.ceil(nombreResultats / secteurs.length);
-    
-    let guidance = `Tu dois répartir les ${nombreResultats} marchés comme suit:\n`;
-    
-    secteurs.forEach((secteur, index) => {
-      const nbMarches = index < nombreResultats % secteurs.length ? 
-        Math.floor(nombreResultats / secteurs.length) + 1 : 
-        Math.floor(nombreResultats / secteurs.length);
-        
-      if (nbMarches > 0) {
-        guidance += `\n**${secteur.toUpperCase()} (${nbMarches} marché${nbMarches > 1 ? 's' : ''}):**\n`;
-        guidance += this.getSectorSpecificGuidance(secteur, produitsCGR);
-      }
-    });
-    
-    return guidance;
-  }
-
-  private getSectorSpecificGuidance(secteur: string, produitsCGR: string[]): string {
-    const produitsStr = produitsCGR.join(', ');
-    
-    switch (secteur.toLowerCase()) {
-      case 'aéronautique':
-        return `Applications aéronautiques pour ${produitsStr}:
-- Systèmes de contrôle de vol avec ressorts de précision
-- Mécanismes de cabine avec ressorts spécialisés
-- Équipements de navigation avec composants ressort
-- Systèmes de sécurité avion avec ressorts haute performance
-- Trains d'atterrissage avec ressorts de suspension`;
-        
-      case 'industrie électrique':
-        return `Applications industrie électrique pour ${produitsStr}:
-- Disjoncteurs et interrupteurs avec ressorts de contact
-- Relais électriques avec mécanismes ressort
-- Transformateurs avec ressorts de serrage
-- Armoires électriques avec ressorts de verrouillage
-- Connecteurs électriques avec ressorts de contact`;
-        
-      case 'automobile':
-        return `Applications automobiles pour ${produitsStr}:
-- Systèmes de sécurité avec ressorts spéciaux
-- Composants intérieur avec mécanismes ressort
-- Équipements électriques avec ressorts de contact
-- Systèmes de confort avec ressorts de précision
-- Mécanismes de verrouillage avec ressorts`;
-        
-      case 'ferroviaire':
-        return `Applications ferroviaires pour ${produitsStr}:
-- Systèmes de freinage avec ressorts de sécurité
-- Bogies avec ressorts de suspension
-- Portes de train avec mécanismes ressort
-- Systèmes de signalisation avec ressorts de contact
-- Pantographes avec ressorts de pression`;
-        
-      case 'médical':
-        return `Applications médicales pour ${produitsStr}:
-- Dispositifs médicaux avec ressorts de précision
-- Équipements hospitaliers avec mécanismes ressort
-- Instruments chirurgicaux avec composants ressort
-- Appareils de diagnostic avec systèmes de tension
-- Prothèses et orthèses avec mécanismes ressort`;
-        
-      case 'énergie':
-        return `Applications énergétiques pour ${produitsStr}:
-- Équipements éoliens avec ressorts de sécurité
-- Systèmes solaires avec mécanismes ressort
-- Installations nucléaires avec ressorts spéciaux
-- Stockage d'énergie avec composants ressort`;
-        
-      default:
-        return `Applications industrielles pour ${produitsStr}:
-- Machines spéciales avec ressorts de précision
-- Équipements automatisés avec mécanismes ressort
-- Systèmes de sécurité industriels
-- Appareils de mesure avec composants ressort`;
+Utilise des données récentes et cite tes sources.
+Retourne uniquement le JSON demandé.`;
     }
   }
 
-  private parseBrainstormingResponse(response: any): { markets: MarketOpportunity[], total: number, success: boolean, error?: string } {
+  private parseBrainstormingResponse(response: any, originalData: BrainstormingData): any {
     try {
       const content = response.choices[0]?.message?.content || '';
-      console.log('📄 Contenu reçu (premiers 500 chars):', content.substring(0, 500) + '...');
+      const citations = response.citations || [];
+      
+      console.log('📄 Contenu reçu de Perplexity');
       
       let jsonStr = this.cleanJsonString(content);
       let parsed: any;
       
       try {
         parsed = JSON.parse(jsonStr);
-        console.log('✅ Parsing direct réussi');
+        console.log('✅ Parsing JSON réussi');
       } catch (error) {
-        console.log('⚠️ Parsing direct échoué, tentative de réparation...');
+        console.log('⚠️ Tentative de réparation JSON...');
         jsonStr = this.repairJsonString(jsonStr);
-        try {
-          parsed = JSON.parse(jsonStr);
-          console.log('✅ Parsing avec réparation réussi');
-        } catch (error2) {
-          console.log('⚠️ Parsing avec réparation échoué, tentative de parsing manuel...');
-          const manualResults = this.manualParseMarkets(content);
-          if (manualResults.length > 0) {
-            console.log('✅ Parsing manuel réussi');
-            return {
-              markets: manualResults,
-              total: manualResults.length,
-              success: true
-            };
-          }
-          throw new Error(`Impossible de parser le JSON: ${error2}`);
-        }
+        parsed = JSON.parse(jsonStr);
       }
       
       if (!parsed || !Array.isArray(parsed.markets)) {
-        console.error('❌ Structure JSON invalide:', parsed);
+        console.error('❌ Structure JSON invalide');
         return { markets: [], total: 0, success: false, error: 'Structure JSON invalide' };
       }
 
-      const cleanedMarkets = this.validateAndCleanMarkets(parsed.markets);
+      const cleanedMarkets = this.validateAndCleanMarkets(parsed.markets, originalData);
       
       console.log(`✅ ${cleanedMarkets.length} marchés parsés avec succès`);
+      
       return {
         markets: cleanedMarkets,
         total: cleanedMarkets.length,
-        success: true
+        success: true,
+        sources: citations,
+        analyse_tendances: parsed.analyse_tendances || '',
+        niche_specifiee: originalData.secteurActiviteLibre || null,
+        mode_recherche: originalData.secteurActiviteLibre ? 'ciblé' : 'exploratoire'
       };
       
     } catch (error: any) {
-      console.error('❌ Erreur parsing finale:', error.message);
-      console.error('❌ Contenu brut:', response.choices[0]?.message?.content?.substring(0, 1000));
-      
+      console.error('❌ Erreur parsing:', error.message);
       return { 
         markets: [], 
         total: 0, 
@@ -339,12 +277,9 @@ Retourne uniquement le JSON demandé, sans aucun texte supplémentaire.`;
 
   private cleanJsonString(content: string): string {
     let jsonStr = content.trim();
-    
-    // Remove markdown code blocks
     jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/\n?```$/g, '');
-    jsonStr = jsonStr.replace(/```\n?/g, '').replace(/\n?```$/g, '');
+    jsonStr = jsonStr.replace(/```\n?/g, '');
     
-    // Remove any text before first { or after last }
     const firstBrace = jsonStr.indexOf('{');
     const lastBrace = jsonStr.lastIndexOf('}');
     
@@ -357,89 +292,49 @@ Retourne uniquement le JSON demandé, sans aucun texte supplémentaire.`;
 
   private repairJsonString(jsonStr: string): string {
     let repaired = jsonStr;
-    
-    // Remove trailing commas
     repaired = repaired.replace(/,(\s*[}\]])/g, '$1');
-    
-    // Fix unescaped quotes in strings
-    repaired = repaired.replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":');
-    
-    // Normalize whitespace
-    repaired = repaired.replace(/\s+/g, ' ');
-    
-    // Fix missing commas between objects
     repaired = repaired.replace(/}\s*{/g, '},{');
-    
-    // Fix missing commas between array elements
     repaired = repaired.replace(/]\s*\[/g, '],[');
-    
-    // Ensure proper string quotes
-    repaired = repaired.replace(/:\s*([^",\[\]{}]+)(\s*[,}\]])/g, (match, value, suffix) => {
-      if (value.trim() === 'true' || value.trim() === 'false' || value.trim() === 'null' || !isNaN(Number(value.trim()))) {
-        return `: ${value.trim()}${suffix}`;
-      }
-      return `: "${value.trim()}"${suffix}`;
-    });
-    
     return repaired;
   }
 
-  private manualParseMarkets(content: string): MarketOpportunity[] {
-    const markets: MarketOpportunity[] = [];
-    
-    // Enhanced regex patterns for more flexible parsing
-    const marketPatterns = [
-      /\{\s*"nom_marche"\s*:\s*"([^"]+)"\s*,\s*"justification"\s*:\s*"([^"]+)"\s*,\s*"produits_cgr_applicables"\s*:\s*\[([^\]]*)\]\s*,\s*"exemples_entreprises"\s*:\s*\[([^\]]*)\]\s*(?:,\s*"taille_entreprises_cibles"\s*:\s*"([^"]*)")?(?:\s*,\s*"volume_pieces_estime"\s*:\s*"([^"]*)")?\s*\}/g,
-      /\{\s*"nom_marche"\s*:\s*"([^"]+)"[\s\S]*?"justification"\s*:\s*"([^"]+)"[\s\S]*?"produits_cgr_applicables"\s*:\s*\[([^\]]*)\][\s\S]*?"exemples_entreprises"\s*:\s*\[([^\]]*)\][\s\S]*?\}/g
-    ];
-    
-    for (const pattern of marketPatterns) {
-      let match;
-      while ((match = pattern.exec(content)) !== null && markets.length < 5) {
-        try {
-          const [, nom_marche, justification, produits_str, entreprises_str, taille_entreprises, volume_pieces] = match;
-          
-          const produits_cgr_applicables = this.parseArrayString(produits_str);
-          const exemples_entreprises = this.parseArrayString(entreprises_str);
-          
-          if (nom_marche && justification && produits_cgr_applicables.length > 0) {
-            markets.push({
-              nom_marche: nom_marche.trim(),
-              justification: justification.trim(),
-              produits_cgr_applicables,
-              exemples_entreprises,
-              taille_entreprises_cibles: taille_entreprises || 'Non spécifié',
-              volume_pieces_estime: volume_pieces || 'Non spécifié'
-            });
-          }
-        } catch (error) {
-          console.error('❌ Erreur parsing manuel pour un marché:', error);
-        }
-      }
-    }
-    
-    return markets;
+  private normalizeForComparison(text: string): string {
+    return text
+      .toLowerCase()
+      .normalize('NFD') // Decompose accented characters
+      .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+      .trim();
   }
 
-  private parseArrayString(arrayStr: string): string[] {
-    if (!arrayStr || arrayStr.trim() === '') return [];
+  private validateAndCleanMarkets(markets: any[], originalData: BrainstormingData): MarketOpportunity[] {
+    const nicheSpecifiee = originalData.secteurActiviteLibre?.toLowerCase();
     
-    return arrayStr
-      .split(',')
-      .map(item => item.trim().replace(/^["']|["']$/g, ''))
-      .filter(item => item.length > 0 && item !== 'null' && item !== 'undefined');
-  }
-
-  private validateAndCleanMarkets(markets: any[]): MarketOpportunity[] {
     return markets
       .filter(market => {
         if (!market || typeof market !== 'object') return false;
-        if (!market.nom_marche || typeof market.nom_marche !== 'string') return false;
-        if (!market.justification || typeof market.justification !== 'string') return false;
-        if (market.justification.length < 50) return false;
+        if (!market.nom_marche || !market.justification) return false;
         
-        return true;
+        // If niche was specified, validate relevance
+        if (nicheSpecifiee) {
+          const nomMarche = this.normalizeForComparison(market.nom_marche);
+          const sousSecteur = this.normalizeForComparison(market.sous_secteur_specifique || '');
+          const justification = this.normalizeForComparison(market.justification);
+          const nicheNormalized = this.normalizeForComparison(nicheSpecifiee);
+          
+          // Check if market is relevant to specified niche
+          const isRelevant = nomMarche.includes(nicheNormalized) || 
+                            sousSecteur.includes(nicheNormalized) ||
+                            justification.includes(nicheNormalized);
+          
+          if (!isRelevant) {
+            console.log(`⚠️ Marché filtré (hors niche): ${market.nom_marche}`);
+            return false;
+          }
+        }
+        
+        return market.justification.length >= 100;
       })
+      
       .map(market => ({
         nom_marche: String(market.nom_marche).trim(),
         justification: String(market.justification).trim(),
@@ -450,7 +345,9 @@ Retourne uniquement le JSON demandé, sans aucun texte supplémentaire.`;
           ? market.exemples_entreprises.filter((e: any) => e && typeof e === 'string').map((e: any) => String(e).trim())
           : [],
         taille_entreprises_cibles: String(market.taille_entreprises_cibles || 'Non spécifié').trim(),
-        volume_pieces_estime: String(market.volume_pieces_estime || 'Non spécifié').trim()
+        volume_pieces_estime: String(market.volume_pieces_estime || 'Non spécifié').trim(),
+        sous_secteur_specifique: String(market.sous_secteur_specifique || market.nom_marche).trim(),
+        niveau_pertinence: market.niveau_pertinence || 'moyenne'
       }))
       .slice(0, 5);
   }

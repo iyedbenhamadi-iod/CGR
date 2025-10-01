@@ -19,7 +19,6 @@ export interface FormData {
   motsCles: string
   produitsCGR: string[]
   autresProduits?: string
-  volumePieces: number[]
   clientsExclure: string
   usinesCGR: string[]
   nomConcurrent: string

@@ -23,7 +23,7 @@ export default function StepBasicParameters({ formData, setFormData }: StepProps
 
       {/* Secteurs d'activité */}
       <div className="space-y-4">
-        <Label className="text-lg font-medium text-foreground">Secteurs d'activité cibles</Label>
+        <Label className="text-lg font-medium text-foreground">Secteurs d'activité cibles <b>*</b></Label>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
           {SECTEURS_ACTIVITE.map((secteur) => (
             <div key={secteur} className="flex items-center space-x-3">
@@ -54,7 +54,7 @@ export default function StepBasicParameters({ formData, setFormData }: StepProps
 
       {/* Zone géographique */}
       <div className="space-y-4">
-        <Label className="text-lg font-medium text-foreground">Zone géographique</Label>
+        <Label className="text-lg font-medium text-foreground">Zone géographique <b>*</b></Label>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
           {ZONES_GEOGRAPHIQUES.map((zone) => (
             <div key={zone} className="flex items-center space-x-3">
