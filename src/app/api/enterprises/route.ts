@@ -348,7 +348,6 @@ export async function POST(request: NextRequest) {
           }
         };
       })
-      .filter(prospect => prospect.score >= 3.0) // Filter low-quality prospects
       .sort((a, b) => b.score - a.score);
 
     // If we have fewer than requested after quality filtering, keep lower-scored ones

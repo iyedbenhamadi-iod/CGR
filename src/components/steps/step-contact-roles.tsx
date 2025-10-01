@@ -99,14 +99,14 @@ export default function StepCompetitorContact({ formData, setFormData }: StepPro
                   className="mt-1 h-12"
                 />
               </div>
-              <div>
-  <Label htmlFor="zoneGeographique" className="text-base font-medium">
+<div>
+  <Label htmlFor="location" className="text-base font-medium"> {/* Changed id to location */}
     Zone géographique
   </Label>
   <Input
-    id="zoneGeographique"
-    value={formData.location} // ✅ Changé de location à zoneGeographique
-    onChange={(e) => setFormData({ ...formData, location: e.target.value })} // ✅ Changé
+    id="location"
+    value={formData.location}
+    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
     placeholder="Ex: France, Paris, Lyon, Europe"
     className="mt-1 h-12"
   />

@@ -49,6 +49,7 @@ export default function SearchWizard({ onSearch, loading, prefillData }: SearchW
   })
 
   // NEW: Handle prefilled data from brainstorming
+// NEW: Handle prefilled data from brainstorming or company results
   useEffect(() => {
     if (prefillData) {
       console.log("📋 Applying prefill data:", prefillData)
@@ -57,11 +58,16 @@ export default function SearchWizard({ onSearch, loading, prefillData }: SearchW
         ...prefillData
       }))
       
-      // Auto-navigate to basic parameters step if coming from brainstorming
+      // Auto-navigate to appropriate step based on search type
       if (prefillData.typeRecherche === "entreprises") {
-        // Small delay to ensure smooth transition
+        // For company search from brainstorming, go to basic parameters (step 1)
         setTimeout(() => {
-          setCurrentStep(1) // Move to step 1 (basic parameters)
+          setCurrentStep(1)
+        }, 100)
+      } else if (prefillData.typeRecherche === "contacts") {
+        // For contact search from company results, go to competitor-contact step (step 1)
+        setTimeout(() => {
+          setCurrentStep(1)
         }, 100)
       }
     }

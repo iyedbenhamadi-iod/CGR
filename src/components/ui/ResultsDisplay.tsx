@@ -145,6 +145,8 @@ interface ResultsDisplayProps {
     specialites_identifiees?: string[]
   }
   onSearchFromBrainstorming?: (marketName: string, cgrProducts: string[]) => void // NEW
+    onSearchContacts?: (companyName: string, website: string) => void // ADD THIS LINE
+
 }
 
 
@@ -554,7 +556,13 @@ function CompetitorCard({ competitor }: { competitor: Competitor }) {
   )
 }
 
-function ProspectCard({ prospect }: { prospect: Prospect }) {
+function ProspectCard({ 
+  prospect, 
+  onSearchContacts 
+}: { 
+  prospect: Prospect; 
+  onSearchContacts?: (companyName: string, website: string) => void 
+}) {
   return (
     <Card className="bg-card border border-border/50 shadow-md hover:shadow-lg transition-shadow duration-200">
       <CardHeader className="pb-4">
@@ -564,17 +572,31 @@ function ProspectCard({ prospect }: { prospect: Prospect }) {
             <div>
               <CardTitle className="text-2xl font-bold text-foreground">{prospect.nom_entreprise}</CardTitle>
               <CardDescription className="text-muted-foreground mt-1">{prospect.description_activite}</CardDescription>
-              {prospect.site_web && isValidUrl(prospect.site_web) && (
-                <Button 
-                  variant="link" 
-                  size="sm" 
-                  className="h-auto p-0 text-sm mt-2 text-primary hover:underline"
-                  onClick={() => window.open(prospect.site_web, '_blank', 'noopener,noreferrer')}
-                >
-                  <ExternalLink className="w-4 h-4 mr-1" />
-                  Visiter le site web
-                </Button>
-              )}
+              <div className="flex gap-2 mt-2">
+                {prospect.site_web && isValidUrl(prospect.site_web) && (
+                  <Button 
+                    variant="link" 
+                    size="sm" 
+                    className="h-auto p-0 text-sm text-primary hover:underline"
+                    onClick={() => window.open(prospect.site_web, '_blank', 'noopener,noreferrer')}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-1" />
+                    Visiter le site web
+                  </Button>
+                )}
+                {/* ADD THE CONTACT SEARCH BUTTON */}
+                {onSearchContacts && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs bg-accent/10 hover:bg-accent/20 text-accent-foreground border-accent/30"
+                    onClick={() => onSearchContacts(prospect.nom_entreprise, prospect.site_web)}
+                  >
+                    <Users className="w-3 h-3 mr-1" />
+                    Rechercher contacts
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
           {prospect.score && (
@@ -740,7 +762,9 @@ export default function ResultsDisplay({
   cached,
   sources,
   statistics,
-  onSearchFromBrainstorming, // ← ADD THIS LINE
+  onSearchFromBrainstorming,
+    onSearchContacts, 
+
 }: ResultsDisplayProps) {
 
 // Replace the variables assignment and hasAnyResults function with this:
@@ -1194,7 +1218,7 @@ if (!debugHasResults && totalFound > 0) {
               </h3>
               <div className="grid gap-6">
                 {displayProspects.map((prospect, index) => (
-                  <ProspectCard key={index} prospect={prospect} />
+                  <ProspectCard key={index} prospect={prospect}               onSearchContacts={onSearchContacts}/>
                 ))}
               </div>
             </>

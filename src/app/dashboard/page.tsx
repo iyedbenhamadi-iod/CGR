@@ -51,6 +51,7 @@ export default function Dashboard() {
   }
 
   // NEW: Handler for launching company search from brainstorming results
+  // NEW: Handler for launching company search from brainstorming results
   const handleSearchFromBrainstorming = (marketName: string, cgrProducts: string[]) => {
     console.log("🚀 Launching company search from brainstorming:", { marketName, cgrProducts })
     
@@ -67,6 +68,32 @@ export default function Dashboard() {
       zoneGeographique: [],
       tailleEntreprise: "",
       motsCles: "",
+      clientsExclure: "",
+      usinesCGR: [],
+      nombreResultats: 10,
+    })
+  }
+
+  // NEW: Handler for launching contact search from company results
+  const handleSearchContacts = (companyName: string, website: string) => {
+    console.log("👥 Launching contact search for company:", { companyName, website })
+    
+    // Reset results to show wizard
+    setResults(null)
+    setError("")
+    
+    // Set prefill data for contact search
+    setPrefillData({
+      typeRecherche: "contacts",
+      nomEntreprise: companyName,
+      siteWebEntreprise: website || "",
+      contactRoles: [], // User will select roles
+      location: "",
+      secteursActivite: [],
+      zoneGeographique: [],
+      tailleEntreprise: "",
+      motsCles: "",
+      produitsCGR: [],
       clientsExclure: "",
       usinesCGR: [],
       nombreResultats: 10,
@@ -254,6 +281,8 @@ export default function Dashboard() {
           <ResultsDisplay 
             {...results} 
             onSearchFromBrainstorming={handleSearchFromBrainstorming}
+                      onSearchContacts={handleSearchContacts} 
+
           />
         </div>
       )}

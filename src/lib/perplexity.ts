@@ -72,7 +72,7 @@ export class PerplexityEnterpriseClient {
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
-          model: 'sonar-deep-research',
+          model: 'sonar',
           messages: [
             { role: 'system', content: this.getSystemPrompt() },
             { role: 'user', content: prompt }
