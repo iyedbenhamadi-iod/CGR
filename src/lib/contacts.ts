@@ -10,8 +10,8 @@ interface ContactInfo {
   verified: boolean;
   accroche_personnalisee?: string;
   sources: string[];
+  relevance_score?: number;
   
-  // Alternative field names for frontend compatibility
   accroche?: string;
   pitch?: string;
 }
@@ -33,6 +33,7 @@ interface ContactSearchResult {
   sources: string[];
   success: boolean;
   error?: string;
+  method?: 'apollo' | 'sonar';
 }
 
 interface ApolloSearchResponse {
@@ -63,7 +64,6 @@ interface ApolloSearchResponse {
   };
 }
 
-// Fonction pour améliorer la correspondance des rôles
 const improveRoleMatching = (contactPoste: string, requestedRoles: string[]): {
   score: number;
   matchedRoles: string[];
@@ -73,7 +73,6 @@ const improveRoleMatching = (contactPoste: string, requestedRoles: string[]): {
   let totalScore = 0;
   const matchedRoles: string[] = [];
   
-  // Dictionnaire de mots-clés pour chaque type de rôle (plus complet)
   const roleKeywords: Record<string, string[]> = {
     "acheteur projet": ["acheteur", "achat", "procurement", "sourcing", "projet", "project", "buyer", "purchasing"],
     "responsable achat": ["responsable achat", "procurement manager", "sourcing manager", "purchasing manager", "head of procurement", "achat", "sourcing", "procurement"],
@@ -85,39 +84,27 @@ const improveRoleMatching = (contactPoste: string, requestedRoles: string[]): {
     "responsable production": ["responsable production", "production manager", "manufacturing manager", "operations manager"],
     "directeur qualité": ["directeur qualité", "quality director", "qhse director", "quality manager", "qualité"],
     "responsable qualité": ["responsable qualité", "quality manager", "qhse manager", "qualité"],
-    "directeur général": ["directeur général", "ceo", "chief executive", "managing director", "général", "president"],
-    "directeur commercial": ["directeur commercial", "sales director", "commercial director", "business development director", "commercial"],
-    "responsable commercial": ["responsable commercial", "sales manager", "account manager", "business development manager"],
-    "directeur supply chain": ["supply chain director", "logistics director", "directeur logistique", "supply chain", "logistique"],
-    "responsable supply chain": ["supply chain manager", "logistics manager", "responsable logistique", "supply chain", "logistique"],
-    "directeur industriel": ["directeur industriel", "industrial director", "manufacturing director", "industriel"],
-    "responsable maintenance": ["responsable maintenance", "maintenance manager", "facility manager", "maintenance"],
-    "directeur financier": ["directeur financier", "cfo", "chief financial", "finance director", "financier"],
-    "contrôleur de gestion": ["contrôleur de gestion", "management controller", "financial controller", "contrôle de gestion"]
   };
   
   requestedRoles.forEach(requestedRole => {
     const normalizedRole = requestedRole.toLowerCase().trim();
     const keywords = roleKeywords[normalizedRole] || [normalizedRole];
     
-    // Vérification directe du nom du rôle (score maximum)
     if (poste.includes(normalizedRole)) {
       totalScore += 100;
       matchedRoles.push(requestedRole);
       return;
     }
     
-    // Vérification par mots-clés avec pondération
     let roleScore = 0;
     keywords.forEach(keyword => {
       if (poste.includes(keyword.toLowerCase())) {
-        // Score plus élevé pour les mots-clés plus spécifiques
         if (keyword.length > 8) {
-          roleScore += 30; // Mots-clés spécifiques (ex: "procurement manager")
+          roleScore += 30;
         } else if (keyword.length > 5) {
-          roleScore += 20; // Mots-clés moyens (ex: "achat")
+          roleScore += 20;
         } else {
-          roleScore += 10; // Mots-clés courts (ex: "r&d")
+          roleScore += 10;
         }
       }
     });
@@ -128,16 +115,14 @@ const improveRoleMatching = (contactPoste: string, requestedRoles: string[]): {
     }
   });
   
-  // Un contact est considéré comme pertinent selon plusieurs critères
   const isBusinessRelevant = [
     'directeur', 'director', 'manager', 'responsable', 'head', 'chief',
     'president', 'vice president', 'vp', 'lead', 'senior'
   ].some(title => poste.includes(title));
   
-  // Critères de pertinence plus stricts
   const isRelevant = totalScore > 25 || 
     (isBusinessRelevant && totalScore > 10) ||
-    (requestedRoles.length === 0); // Si aucun rôle spécifique, accepter tous
+    (requestedRoles.length === 0);
   
   return {
     score: totalScore,
@@ -147,34 +132,77 @@ const improveRoleMatching = (contactPoste: string, requestedRoles: string[]): {
 };
 
 export class ContactSearchClient {
-  private apiKey: string;
-  private baseUrl = 'https://api.apollo.io/api/v1';
+  private apolloApiKey: string;
+  private perplexityApiKey: string;
+  private apolloBaseUrl = 'https://api.apollo.io/api/v1';
+  private perplexityBaseUrl = 'https://api.perplexity.ai';
+
+  private readonly roleMapping: Record<string, string[]> = {
+    "responsable achat": ["procurement manager", "purchasing manager", "sourcing manager", "head of procurement", "acheteur senior", "responsable approvisionnement"],
+    "acheteur": ["buyer", "purchasing specialist", "procurement specialist", "sourcing specialist", "senior buyer", "lead buyer", "strategic buyer"],
+    "directeur achat": ["procurement director", "chief procurement officer", "CPO", "head of purchasing"],
+    "directeur technique": ["technical director", "CTO", "chief technical officer", "R&D director", "innovation director"],
+    "directeur production": ["production director", "manufacturing director", "plant manager", "operations director"],
+  };
+
+  private readonly highRelevanceKeywords = [
+    "buyer", "procurement", "sourcing", "purchasing", "acheteur", "achat",
+    "engineer", "technical", "R&D", "innovation", "ingénieur",
+    "production", "manufacturing", "quality", "operations"
+  ];
+
+  private readonly excludedRoles = [
+    " IT ", "informatique", "système", "security", "network", "software", "digital",
+    "marketing", "communication", "commercial", "vente", "sales", " PR ",
+    "RH", "human resources", "recrutement",
+    "finance", "comptabilité", "accounting", "controller", "audit",
+    "legal", "juridique", "compliance", " risk "
+  ];
 
   constructor() {
-    this.apiKey = process.env.APOLLO_API_KEY!;
-    if (!this.apiKey) {
+    this.apolloApiKey = process.env.APOLLO_API_KEY!;
+    this.perplexityApiKey = process.env.PERPLEXITY_API_KEY!;
+    
+    if (!this.apolloApiKey) {
       throw new Error('APOLLO_API_KEY manquante dans les variables d\'environnement');
+    }
+    if (!this.perplexityApiKey) {
+      throw new Error('PERPLEXITY_API_KEY manquante dans les variables d\'environnement');
     }
   }
 
   async searchContacts(request: ContactSearchRequest): Promise<ContactSearchResult> {
-    console.log('🔍 Début recherche contacts Apollo pour:', request.nomEntreprise);
-    console.log('👥 Rôles recherchés:', request.contactRoles);
+    console.log('🔍 Début recherche contacts pour:', request.nomEntreprise);
+    
+    // Essayer d'abord Apollo
+    const apolloResult = await this.searchWithApollo(request);
+    
+    if (apolloResult.success && apolloResult.contacts.length > 0) {
+      console.log('✅ Contacts trouvés via Apollo:', apolloResult.contacts.length);
+      return { ...apolloResult, method: 'apollo' };
+    }
+    
+    // Fallback vers Sonar si Apollo ne trouve rien
+    console.log('⚠️ Apollo n\'a pas trouvé de contacts, utilisation de Sonar en fallback...');
+    const sonarResult = await this.searchWithSonar(request);
+    
+    return { ...sonarResult, method: 'sonar' };
+  }
+
+  private async searchWithApollo(request: ContactSearchRequest): Promise<ContactSearchResult> {
+    console.log('🔍 Recherche via Apollo...');
     
     try {
-      // Construire les paramètres de recherche Apollo
       const searchParams = this.buildApolloSearchParams(request);
-      console.log('📋 Paramètres Apollo:', JSON.stringify(searchParams, null, 2));
       
-      // Appel à l'API Apollo
       const response = await axios.post<ApolloSearchResponse>(
-        `${this.baseUrl}/mixed_people/search`,
+        `${this.apolloBaseUrl}/mixed_people/search`,
         searchParams,
         {
           headers: {
             'Content-Type': 'application/json',
             'Cache-Control': 'no-cache',
-            'X-Api-Key': this.apiKey
+            'X-Api-Key': this.apolloApiKey
           },
           timeout: 30000
         }
@@ -182,100 +210,297 @@ export class ContactSearchClient {
       
       console.log('✅ Réponse Apollo reçue:', {
         status: response.status,
-        totalContacts: response.data.people?.length || 0,
-        totalEntries: response.data.pagination?.total_entries || 0
+        totalContacts: response.data.people?.length || 0
       });
       
       return this.parseApolloResponse(response.data, request);
       
     } catch (error: any) {
-      console.error('❌ Erreur Apollo API:', {
-        status: error.response?.status,
-        message: error.message,
-        data: error.response?.data
-      });
-      
+      console.error('❌ Erreur Apollo API:', error.message);
       return {
         contacts: [],
         sources: ['Apollo.io'],
         success: false,
-        error: `Erreur Apollo API: ${error.response?.status || 'Network Error'} - ${error.response?.data?.message || error.message}`
+        error: `Erreur Apollo: ${error.message}`
       };
     }
   }
 
-  private buildApolloSearchParams(request: ContactSearchRequest): any {
-    const {
-      nomEntreprise,
-      posteRecherche,
-      secteurActivite,
-      contactRoles,
-      zoneGeographique,
-      nombreResultats
-    } = request;
-
-    // Mapping des rôles vers des titres Apollo
-    const titleSearchTerms: string[] = [];
+  private async searchWithSonar(request: ContactSearchRequest): Promise<ContactSearchResult> {
+    console.log('🔍 Recherche via Sonar (Perplexity)...');
     
+    const prompt = this.buildSonarSearchPrompt(request);
+    
+    try {
+      const response = await axios.post(
+        `${this.perplexityBaseUrl}/chat/completions`,
+        {
+          model: 'sonar',
+          messages: [
+            { role: 'system', content: this.getSonarSystemPrompt() },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.2,
+          max_tokens: 4000
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.perplexityApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 60000
+        }
+      );
+      
+      console.log('✅ Réponse Sonar reçue');
+      return this.parseSonarResponse(response.data, request);
+      
+    } catch (error: any) {
+      console.error('❌ Erreur Sonar API:', error.message);
+      return {
+        contacts: [],
+        sources: ['Sonar'],
+        success: false,
+        error: `Erreur Sonar: ${error.message}`
+      };
+    }
+  }
+
+  private getSonarSystemPrompt(): string {
+    return `Tu es un expert en recherche de contacts B2B industriels. Tu dois rechercher des décideurs dans l'entreprise cible et répondre UNIQUEMENT en JSON valide.
+
+🎯 EXPERTISE CGR INTERNATIONAL:
+- Fabricant de ressorts sur mesure et composants mécaniques
+- Technologies: formage à froid, surmoulage métal, co-ingénierie  
+- Secteurs: automobile, aéronautique, industrie
+
+FORMAT JSON OBLIGATOIRE:
+{
+  "contacts": [
+    {
+      "nom": "Nom",
+      "prenom": "Prénom", 
+      "poste": "Poste exact",
+      "email": "email@entreprise.com",
+      "phone": "+33...",
+      "linkedin_url": "https://linkedin.com/in/...",
+      "verified": true,
+      "relevance_score": 0.85,
+      "sources": ["url1", "url2"]
+    }
+  ],
+  "sources": ["url1", "url2"]
+}
+
+🚨 RÈGLES CRITIQUES:
+- PRIORITÉ aux rôles ACHAT, TECHNIQUE, PRODUCTION
+- EXCLURE: IT, Marketing, RH, Finance, Legal, Commercial
+- Vérifier que le poste correspond aux besoins de composants mécaniques
+- Score de pertinence obligatoire (0.0 à 1.0)
+
+✅ RÔLES CIBLES:
+- Achat: responsable achat, acheteur, procurement manager, CPO, senior buyer
+- Technique: directeur technique, R&D, ingénieur produit, CTO
+- Production: directeur production, responsable qualité, manufacturing manager
+
+❌ EXCLUSIONS ABSOLUES:
+- IT, Security, Software, Digital
+- Marketing, Sales, Communication  
+- RH, Finance, Legal, Audit`;
+  }
+
+  private buildSonarSearchPrompt(request: ContactSearchRequest): string {
+    const { nomEntreprise, contactRoles, secteurActivite, siteWebEntreprise, zoneGeographique } = request;
+    
+    let rolesSection = '';
     if (contactRoles && contactRoles.length > 0) {
-      contactRoles.forEach(role => {
-        const normalizedRole = role.toLowerCase().trim();
-        
-        // Mapping français -> anglais pour Apollo
-        const roleMapping: Record<string, string[]> = {
-          "acheteur projet": ["Project Buyer", "Project Purchaser", "Purchasing Project"],
-          "responsable achat": ["Procurement Manager", "Purchasing Manager", "Head of Procurement"],
-          "directeur achat": ["Procurement Director", "Chief Procurement Officer", "CPO", "Director of Procurement"],
-          "acheteur": ["Buyer", "Purchaser", "Procurement Specialist"],
-          "acheteur commodité": ["Commodity Buyer", "Acheteur Commodité"],
-          "directeur technique": ["Technical Director", "CTO", "Chief Technical Officer", "Engineering Director"],
-          "responsable technique": ["Technical Manager", "Engineering Manager", "R&D Manager"],
-          "directeur production": ["Production Director", "Manufacturing Director", "Operations Director"],
-          "responsable production": ["Production Manager", "Manufacturing Manager", "Plant Manager"],
-          "directeur qualité": ["Quality Director", "QHSE Director", "Quality Manager"],
-          "responsable qualité": ["Quality Manager", "QHSE Manager", "Quality Assurance Manager"],
-          "directeur général": ["CEO", "Chief Executive Officer", "Managing Director", "General Manager"],
-          "directeur commercial": ["Sales Director", "Commercial Director", "Chief Commercial Officer"],
-          "responsable commercial": ["Sales Manager", "Account Manager", "Business Development Manager"],
-          "directeur supply chain": ["Supply Chain Director", "Logistics Director", "Chief Supply Chain Officer"],
-          "responsable supply chain": ["Supply Chain Manager", "Logistics Manager"],
-          "directeur industriel": ["Industrial Director", "Manufacturing Director"],
-          "responsable maintenance": ["Maintenance Manager", "Facility Manager"],
-          "directeur financier": ["CFO", "Chief Financial Officer", "Finance Director"],
-          "contrôleur de gestion": ["Management Controller", "Financial Controller"]
-        };
-        
-        const mappedTitles = roleMapping[normalizedRole] || [role];
-        titleSearchTerms.push(...mappedTitles);
-      });
-    } else if (posteRecherche) {
-      titleSearchTerms.push(posteRecherche);
+      rolesSection = `
+🎯 RÔLES SPÉCIFIQUES RECHERCHÉS:
+${contactRoles.map(role => {
+        const synonyms = this.roleMapping[role.toLowerCase()] || [];
+        return `- ${role}\n  Synonymes: ${synonyms.join(', ')}`;
+      }).join('\n')}`;
     }
 
-    // Construction des paramètres de recherche Apollo avec q_organization_name pour un filtrage plus strict
-    const searchParams: any = {
-      page: 1,
-      per_page: nombreResultats || 25,
-      // Utiliser q_organization_name au lieu de organization_names pour un filtrage exact
-      q_organization_name: nomEntreprise,
-      person_titles: titleSearchTerms.length > 0 ? titleSearchTerms : undefined,
-    };
+    return `Recherche de contacts décisionnaires pour "${nomEntreprise}".
 
-    // Ajout du filtre géographique
-    if (zoneGeographique) {
-      if (zoneGeographique.toLowerCase().includes('france')) {
-        searchParams.person_locations = ['France'];
-      } else {
-        searchParams.person_locations = [zoneGeographique];
+🏢 ENTREPRISE: ${nomEntreprise}
+${secteurActivite ? `🏭 SECTEUR: ${secteurActivite}` : ''}
+${siteWebEntreprise ? `🌐 SITE WEB: ${siteWebEntreprise}` : ''}
+${zoneGeographique ? `📍 ZONE: ${zoneGeographique}` : ''}
+
+${rolesSection}
+
+🔍 SOURCES À CONSULTER EN PRIORITÉ:
+1. Site web de l'entreprise: "${nomEntreprise} équipe dirigeants contacts"
+2. LinkedIn: "${nomEntreprise} procurement achat responsable"
+3. Annuaires professionnels: Kompass, Viadeo, Manageo.fr, Verif, Societe.com
+4. Pages entreprise: "${nomEntreprise} organigramme direction technique"
+5. Annuaires industriels: Pappers, Infogreffe, rapports annuels
+6. BOAMP pour marchés publics si applicable
+7. Pages "équipe" ou "about us" du site officiel
+
+⚡ INSTRUCTIONS CRITIQUES:
+1. Rechercher dans les sources françaises fiables (Kompass, Verif, Societe.com, Manageo)
+2. Vérifier les organigrammes d'entreprise et pages équipe
+3. Privilégier LinkedIn pour les profils professionnels actuels
+4. Valider que les contacts sont actuellement en poste
+5. Attribuer un score de pertinence basé sur l'adéquation au besoin
+
+🎯 CRITÈRES DE SCORING:
+- 0.9-1.0: Correspondance parfaite (CPO, Directeur Achat)
+- 0.7-0.8: Très pertinent (Senior Buyer, Directeur Technique)  
+- 0.5-0.6: Moyennement pertinent (Acheteur, Ingénieur)
+- <0.5: Non pertinent (à exclure)
+
+🎯 OBJECTIF: ${request.nombreResultats || 5} contacts ULTRA-QUALIFIÉS avec coordonnées vérifiées.
+
+RÉPONSE: JSON strict avec contacts filtrés et sources vérifiables.`;
+  }
+
+  private async parseSonarResponse(response: any, request: ContactSearchRequest): Promise<ContactSearchResult> {
+    try {
+      const content = response.choices[0]?.message?.content || '';
+      console.log('🔍 Contenu Sonar reçu:', content.substring(0, 300));
+      
+      let cleanContent = content.trim();
+      cleanContent = cleanContent.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      
+      const jsonMatch = cleanContent.match(/\{[\s\S]*"contacts"[\s\S]*\[[\s\S]*\][\s\S]*\}/);
+      
+      if (!jsonMatch) {
+        return {
+          contacts: [],
+          sources: ['Sonar'],
+          success: false,
+          error: 'Format JSON non trouvé dans la réponse Sonar'
+        };
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      
+      if (!parsed || !Array.isArray(parsed.contacts)) {
+        return {
+          contacts: [],
+          sources: ['Sonar'],
+          success: false,
+          error: 'Structure JSON invalide'
+        };
+      }
+
+      const qualifiedContacts: ContactInfo[] = [];
+
+      for (const contact of parsed.contacts.filter((c: any) => c && typeof c === 'object')) {
+        if (!contact.nom || !contact.prenom || !contact.poste) {
+          continue;
+        }
+
+        const relevanceCheck = await this.validateRoleRelevance(
+          contact.poste, 
+          request.contactRoles || []
+        );
+
+        if (!relevanceCheck.isRelevant) {
+          console.log('❌ Contact Sonar rejeté:', contact.poste);
+          continue;
+        }
+
+        const qualifiedContact: ContactInfo = {
+          nom: String(contact.nom || '').trim(),
+          prenom: String(contact.prenom || '').trim(),
+          poste: String(contact.poste || '').trim(),
+          email: contact.email ? String(contact.email).trim() : undefined,
+          phone: contact.phone ? this.cleanPhoneNumber(String(contact.phone)) : undefined,
+          linkedin_url: contact.linkedin_url ? String(contact.linkedin_url).trim() : undefined,
+          verified: Boolean(contact.verified),
+          relevance_score: relevanceCheck.score,
+          sources: Array.isArray(contact.sources) ? contact.sources.filter(this.isValidUrl) : ['Sonar']
+        };
+
+        qualifiedContact.accroche_personnalisee = this.generatePersonalizedPitch(
+          { first_name: qualifiedContact.prenom, title: qualifiedContact.poste },
+          request.nomEntreprise,
+          { score: relevanceCheck.score, matchedRoles: [], isRelevant: true }
+        );
+        qualifiedContact.accroche = qualifiedContact.accroche_personnalisee;
+        qualifiedContact.pitch = qualifiedContact.accroche_personnalisee;
+
+        qualifiedContacts.push(qualifiedContact);
+      }
+
+      qualifiedContacts.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
+
+      const sources = Array.isArray(parsed.sources) ? parsed.sources.filter(this.isValidUrl) : ['Sonar'];
+      
+      return {
+        contacts: qualifiedContacts,
+        sources,
+        success: qualifiedContacts.length > 0
+      };
+    } catch (error: any) {
+      console.error('❌ Erreur parsing Sonar:', error);
+      return {
+        contacts: [],
+        sources: ['Sonar'],
+        success: false,
+        error: `Erreur parsing: ${error.message}`
+      };
+    }
+  }
+
+  private async validateRoleRelevance(poste: string, targetRoles: string[]): Promise<{isRelevant: boolean, score: number}> {
+    const posteLower = poste.toLowerCase();
+    
+    for (const excluded of this.excludedRoles) {
+      if (posteLower.includes(excluded.toLowerCase().trim())) {
+        return { isRelevant: false, score: 0.0 };
       }
     }
 
-    // Ajout du secteur d'activité si disponible
-    if (secteurActivite) {
-      searchParams.organization_industry_tag_ids = [secteurActivite];
+    let maxScore = 0.0;
+
+    for (const keyword of this.highRelevanceKeywords) {
+      if (posteLower.includes(keyword.toLowerCase())) {
+        maxScore = Math.max(maxScore, 0.75);
+      }
     }
 
-    // Nettoyer les valeurs undefined
+    for (const targetRole of targetRoles) {
+      const synonyms = this.roleMapping[targetRole.toLowerCase()] || [];
+      for (const synonym of synonyms) {
+        if (posteLower.includes(synonym.toLowerCase())) {
+          maxScore = Math.max(maxScore, 0.85);
+        }
+      }
+    }
+
+    return {
+      isRelevant: maxScore >= 0.7,
+      score: maxScore
+    };
+  }
+
+  private buildApolloSearchParams(request: ContactSearchRequest): any {
+    const titleSearchTerms: string[] = [];
+    
+    if (request.contactRoles && request.contactRoles.length > 0) {
+      request.contactRoles.forEach(role => {
+        const mappedTitles = this.roleMapping[role.toLowerCase()] || [role];
+        titleSearchTerms.push(...mappedTitles);
+      });
+    }
+
+    const searchParams: any = {
+      page: 1,
+      per_page: request.nombreResultats || 25,
+      q_organization_name: request.nomEntreprise,
+      person_titles: titleSearchTerms.length > 0 ? titleSearchTerms : undefined,
+    };
+
+    if (request.zoneGeographique) {
+      searchParams.person_locations = [request.zoneGeographique];
+    }
+
     Object.keys(searchParams).forEach(key => {
       if (searchParams[key] === undefined) {
         delete searchParams[key];
@@ -285,137 +510,57 @@ export class ContactSearchClient {
     return searchParams;
   }
 
-  private parseApolloResponse(
-    response: ApolloSearchResponse,
-    request: ContactSearchRequest
-  ): ContactSearchResult {
+  private parseApolloResponse(response: ApolloSearchResponse, request: ContactSearchRequest): ContactSearchResult {
     try {
       if (!response.people || !Array.isArray(response.people)) {
-        console.log('❌ Pas de contacts dans la réponse Apollo');
         return {
           contacts: [],
           sources: ['Apollo.io'],
-          success: false,
-          error: 'Aucun contact trouvé dans la base Apollo'
+          success: false
         };
       }
 
-      console.log(`📊 Traitement de ${response.people.length} contacts Apollo`);
-
       const contacts: ContactInfo[] = response.people
         .filter((person) => {
-          // VALIDATION CRITIQUE: Vérifier que le contact appartient bien à l'entreprise cible
           const organizationName = person.organization?.name?.toLowerCase().trim() || '';
           const targetCompany = request.nomEntreprise.toLowerCase().trim();
-          
-          // Vérification stricte du nom de l'entreprise
-          const isCorrectCompany = organizationName.includes(targetCompany) || 
-                                   targetCompany.includes(organizationName) ||
-                                   organizationName === targetCompany;
-          
-          if (!isCorrectCompany) {
-            console.log('❌ Contact filtré (mauvaise entreprise):', {
-              nom: `${person.first_name} ${person.last_name}`,
-              poste: person.title,
-              entrepriseTrouvee: person.organization?.name,
-              entrepriseCible: request.nomEntreprise,
-              raison: 'N\'appartient pas à l\'entreprise cible'
-            });
-          }
-          
-          return isCorrectCompany;
+          return organizationName.includes(targetCompany) || targetCompany.includes(organizationName);
         })
-        .map((person, index) => {
-          // Extraction du téléphone
+        .map((person) => {
           let phone: string | undefined;
           if (person.phone_numbers && person.phone_numbers.length > 0) {
             const primaryPhone = person.phone_numbers.find(p => p.type === 'work') || person.phone_numbers[0];
             phone = this.formatFrenchPhone(primaryPhone.sanitized_number || primaryPhone.raw_number);
           }
 
-          // Validation de l'email
-          const email = person.email && this.isValidEmail(person.email) 
-            ? person.email 
-            : undefined;
-
-          // Validation de l'URL LinkedIn
-          const linkedin_url = person.linkedin_url && this.isValidLinkedInUrl(person.linkedin_url)
-            ? person.linkedin_url
-            : undefined;
-
-          // Vérification de la pertinence du rôle
-          const roleMatch = improveRoleMatching(
-            person.title || '',
-            request.contactRoles || []
-          );
-
-          // Construction du contact
           const contact: ContactInfo = {
             nom: person.last_name || '',
             prenom: person.first_name || '',
             poste: person.title || '',
-            email: email,
+            email: person.email && this.isValidEmail(person.email) ? person.email : undefined,
             phone: phone,
-            linkedin_url: linkedin_url,
-            verified: true, // Contacts Apollo sont vérifiés
+            linkedin_url: person.linkedin_url && this.isValidLinkedInUrl(person.linkedin_url) ? person.linkedin_url : undefined,
+            verified: true,
             accroche_personnalisee: this.generatePersonalizedPitch(
               person,
               request.nomEntreprise,
-              roleMatch
+              improveRoleMatching(person.title || '', request.contactRoles || [])
             ),
-            sources: ['Apollo.io'],
-            accroche: undefined,
-            pitch: undefined
+            sources: ['Apollo.io']
           };
 
-          // Ajout des champs alternatifs
           contact.accroche = contact.accroche_personnalisee;
           contact.pitch = contact.accroche_personnalisee;
-
-          console.log(`✅ Contact ${index + 1} (${person.organization?.name}):`, {
-            nom: contact.nom,
-            prenom: contact.prenom,
-            poste: contact.poste,
-            entreprise: person.organization?.name,
-            hasEmail: !!contact.email,
-            hasPhone: !!contact.phone,
-            hasLinkedIn: !!contact.linkedin_url,
-            roleScore: roleMatch.score,
-            isRelevant: roleMatch.isRelevant
-          });
 
           return contact;
         })
         .filter(contact => {
-          // Validation finale
           const hasBasicInfo = contact.nom && contact.prenom && contact.poste;
           const hasContactMethod = contact.email || contact.phone || contact.linkedin_url;
-          
-          // Vérification de la pertinence du rôle
-          const roleMatch = improveRoleMatching(
-            contact.poste,
-            request.contactRoles || []
-          );
-
-          const isValid = hasBasicInfo && hasContactMethod && 
-            (roleMatch.isRelevant || !request.contactRoles || request.contactRoles.length === 0);
-
-          if (!isValid) {
-            console.log('❌ Contact rejeté:', {
-              nom: contact.nom,
-              poste: contact.poste,
-              raison: !hasBasicInfo ? 'Infos manquantes' :
-                     !hasContactMethod ? 'Pas de moyen de contact' :
-                     'Rôle non pertinent'
-            });
-          }
-
-          return isValid;
+          const roleMatch = improveRoleMatching(contact.poste, request.contactRoles || []);
+          return hasBasicInfo && hasContactMethod && (roleMatch.isRelevant || !request.contactRoles || request.contactRoles.length === 0);
         });
 
-      console.log(`✅ ${contacts.length} contacts validés sur ${response.people.length}`);
-
-      // Limiter au nombre demandé
       const limitedContacts = contacts.slice(0, request.nombreResultats || 25);
 
       return {
@@ -425,90 +570,48 @@ export class ContactSearchClient {
       };
 
     } catch (error: any) {
-      console.error('❌ Erreur parsing réponse Apollo:', error);
       return {
         contacts: [],
         sources: ['Apollo.io'],
         success: false,
-        error: `Erreur traitement réponse: ${error.message}`
+        error: error.message
       };
     }
   }
 
-  private generatePersonalizedPitch(
-    person: any,
-    entreprise: string,
-    roleMatch: { score: number; matchedRoles: string[]; isRelevant: boolean }
-  ): string {
+  private generatePersonalizedPitch(person: any, entreprise: string, roleMatch: any): string {
     const prenom = person.first_name || '';
     const poste = person.title || 'votre rôle';
-    const organization = person.organization?.name || entreprise;
-
-    let pitch = `Bonjour ${prenom}, `;
-
-    if (roleMatch.matchedRoles.length > 0) {
-      pitch += `en tant que ${poste} chez ${organization}, `;
-      pitch += `nous pensons que notre solution pourrait répondre à vos besoins en matière de ${roleMatch.matchedRoles[0].toLowerCase()}. `;
-    } else {
-      pitch += `en tant que ${poste} chez ${organization}, `;
-      pitch += `nous souhaiterions échanger avec vous sur vos besoins et défis actuels. `;
-    }
-
-    pitch += `Seriez-vous disponible pour un échange rapide ?`;
-
-    return pitch;
+    
+    return `Bonjour ${prenom}, en tant que ${poste} chez ${entreprise}, nous pensons que notre expertise en composants mécaniques pourrait vous intéresser. Seriez-vous disponible pour un échange rapide ?`;
   }
 
   private formatFrenchPhone(phone: string): string {
     if (!phone) return '';
-    
-    // Nettoyer le numéro
     let cleaned = phone.replace(/[^\d+]/g, '');
-    
-    // Ajouter le préfixe français si nécessaire
     if (cleaned.startsWith('0')) {
       cleaned = '+33' + cleaned.substring(1);
-    } else if (!cleaned.startsWith('+')) {
-      // Si pas de préfixe, vérifier si c'est un numéro français (9 chiffres après le 0)
-      if (cleaned.length === 9) {
-        cleaned = '+33' + cleaned;
-      } else if (cleaned.length === 10) {
-        cleaned = '+33' + cleaned.substring(1);
-      }
     }
-    
-    // Formater en groupes de 2 chiffres
-    if (cleaned.startsWith('+33')) {
-      const number = cleaned.substring(3);
-      const formatted = number.match(/.{1,2}/g)?.join(' ') || number;
-      return `+33 ${formatted}`;
-    }
-    
     return cleaned;
   }
 
+  private cleanPhoneNumber(phone: string): string {
+    return phone.replace(/[^\d+\s\-\.]/g, '').trim();
+  }
+
   private isValidEmail(email: string): boolean {
-    if (!email) return false;
-    
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email) && 
-           !email.includes('example.com') &&
-           !email.includes('test.com') &&
-           !email.includes('@email.com') &&
-           !email.includes('noemail');
+    return emailRegex.test(email) && !email.includes('example.com');
   }
 
   private isValidLinkedInUrl(url: string): boolean {
-    if (!url) return false;
-    
-    return (url.includes('linkedin.com/in/') || url.includes('linkedin.com/company/')) && 
-           this.isValidUrl(url);
+    return url.includes('linkedin.com/in/') && this.isValidUrl(url);
   }
 
   private isValidUrl(url: string): boolean {
     try {
-      const urlObj = new URL(url);
-      return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+      new URL(url);
+      return true;
     } catch {
       return false;
     }

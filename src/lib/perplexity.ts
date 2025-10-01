@@ -1,4 +1,4 @@
-// Updated PerplexityEnterpriseClient with sonar-deep-research model
+// lib/perplexity.ts - Fixed version with better JSON extraction
 import axios from 'axios';
 
 interface Enterprise {
@@ -69,27 +69,35 @@ export class PerplexityEnterpriseClient {
         nombreResultats: searchData.nombreResultats
       });
       
-      // CHANGED: Use sonar-deep-research model for better results
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
-          model: 'sonar-deep-research', // Changed from 'sonar'
+          model: 'sonar-deep-research',
           messages: [
             { role: 'system', content: this.getSystemPrompt() },
             { role: 'user', content: prompt }
           ],
-          max_tokens: 8000, // Increased token limit for more detailed responses
-          temperature: 0.1, // Lowered for more focused results
-          // ADDED: Enable search recency for better data
+          max_tokens: 8000,
+          temperature: 0.1,
           search_recency_filter: 'month',
-          search_domain_filter: ['linkedin.com', 'companieshouse.gov.uk', 'societe.com', 'verif.com']
-        },
+search_domain_filter: [
+  'linkedin.com', 
+  'companieshouse.gov.uk', 
+  'societe.com', 
+  'verif.com',
+  'kompass.com',        // Ajout
+  'europages.com',      // Ajout
+  'kellysearch.com',    // Ajout
+  'infogreffe.fr',      // Ajout (France)
+  'northdata.com',      // Ajout (Allemagne)
+  'companiesintheuk.co.uk' // Ajout (UK)
+]        },
         {
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
           },
-          timeout: 900000 // Increased timeout for deep research
+          timeout: 900000
         }
       );
       
@@ -112,131 +120,68 @@ export class PerplexityEnterpriseClient {
   }
 
   private getSystemPrompt(): string {
-    return `Tu es un expert en intelligence économique spécialisé dans l'identification de prospects FABRICANTS pour CGR International, fabricant français de composants mécaniques industriels.
+    return `Tu es un expert en intelligence économique spécialisé dans l'identification de prospects FABRICANTS pour CGR International.
 
-MISSION CRITIQUE: Identifier EXACTEMENT le nombre d'entreprises FABRICANTES demandé (minimum ${10} entreprises) qui possèdent des USINES DE PRODUCTION et qui conçoivent/fabriquent des produits finis intégrant des composants mécaniques.
+RÈGLE CRITIQUE DE FORMAT: Ta réponse DOIT être UNIQUEMENT un objet JSON valide, sans texte avant ou après, sans balises markdown, sans explication.
 
-⚠️ OBLIGATION DE QUANTITÉ: Tu DOIS retourner au moins ${10} entreprises FABRICANTES valides. Si tu n'en trouves pas assez dans la première recherche, élargis géographiquement ou inclus des secteurs connexes, mais TOUJOURS en respectant les critères de fabrication.
+COMMENCE DIRECTEMENT PAR { et TERMINE PAR }
 
-EXPERTISE CGR DISPONIBLE:
-- Ressorts (fil, plat, torsion) - haute précision
-- Pièces découpées de précision  
+MISSION: Identifier entre 5 et 10 entreprises FABRICANTES (viser 10 si possible) qui:
+- Possèdent des USINES DE PRODUCTION identifiées
+- Conçoivent et fabriquent des produits finis
+- Ont des besoins en composants mécaniques compatibles CGR
+
+PRODUITS CGR DISPONIBLES:
+- Ressorts (fil, plat, torsion)
+- Pièces découpées de précision
 - Formage de tubes
 - Assemblages automatisés
 - Mécatronique
 - Injection plastique
 
-⚠️ ATTENTION FABRICANTS DE RESSORTS: Si une entreprise fabrique des ressorts, elle est CONCURRENTE de CGR → À EXCLURE ABSOLUMENT
-
-STRATÉGIE DE RECHERCHE INTENSIVE:
-1. **RECHERCHE PRINCIPALE**: Secteur et zone spécifiés par l'utilisateur
-2. **RECHERCHE ÉLARGIE**: Si moins de ${10} entreprises trouvées, inclure:
-   - Secteurs connexes et complémentaires
-   - Zones géographiques adjacentes
-   - Entreprises de tailles variables dans la même activité
-   - Sous-secteurs spécialisés
-
-RÈGLES ABSOLUES DE CIBLAGE:
-✅ FABRICANTS UNIQUEMENT - RECHERCHE OBLIGATOIRE:
-- Nom officiel complet de l'entreprise
-- Localisation EXACTE des usines de production (ville, pays)
-- Activité de CONCEPTION et FABRICATION de produits finis (pas distribution)
-- Si partie d'un GROUPE: nom du groupe, maison-mère, autres filiales
-- Produits SPÉCIFIQUES fabriqués dans chaque usine
-- Nombre d'employés et chiffre d'affaires si disponible
-
-✅ CRITÈRES DE QUALIFICATION OBLIGATOIRES:
-Pour chaque entreprise incluse, tu DOIS vérifier et confirmer:
-1. **FABRICATION RÉELLE**: Possède des usines de production identifiées
-2. **PRODUITS FINIS**: Conçoit et fabrique ses propres produits (pas de revente)
-3. **COMPOSANTS MÉCANIQUES**: Utilise des composants compatibles avec l'offre CGR
-4. **VOLUME COMPATIBLE**: Capacité de production adaptée aux spécifications
-5. **QUALITÉ INDUSTRIELLE**: Standards industriels et certifications
-6. **POTENTIEL CGR**: Besoins réels en composants CGR spécifiés
-
-❌ EXCLURE ABSOLUMENT:
-- Revendeurs, distributeurs, négociants, importateurs
+⚠️ EXCLURE ABSOLUMENT:
+- Revendeurs, distributeurs, négociants
 - Installateurs, intégrateurs, bureau d'études
-- Entreprises de services (maintenance, réparation, SAV)
-- Grossistes en composants mécaniques
-- Fabricants de ressorts, pièces découpées, tubes (CONCURRENTS DIRECTS CGR)
-- Entreprises nommées "CGR" ou similaires
-- Sous-traitants mécaniques généralistes sans produits finis propres
-- Filiales commerciales sans production
+- Services (maintenance, SAV)
+- Fabricants de ressorts/pièces découpées/tubes (CONCURRENTS CGR)
+- Entreprises nommées "CGR"
 
-PROCESSUS DE VALIDATION STRICT:
-Avant d'inclure UNE SEULE entreprise, tu DOIS rechercher et confirmer:
-1. A-t-elle des USINES DE PRODUCTION identifiées ? (Où exactement ?)
-2. FABRIQUE-t-elle ses propres produits finis ? (Lesquels précisément ?)
-3. Fait-elle partie d'un GROUPE ? (Lequel ? Autres filiales ?)
-4. A-t-elle des activités R&D/conception ? (Dans quels domaines ?)
-5. N'est-elle PAS uniquement distributrice/installatrice ?
-6. Son volume de production est-il compatible avec les spécifications ?
+VALIDATION REQUISE pour chaque entreprise:
+1. A des USINES identifiées (ville, pays)
+2. FABRIQUE ses propres produits
+3. Fait partie d'un GROUPE (si applicable)
+4. A des besoins en composants CGR
 
-RECHERCHE MULTI-NIVEAU OBLIGATOIRE:
-1. **NIVEAU 1**: Recherche directe dans le secteur et zone spécifiés
-2. **NIVEAU 2**: Si insuffisant, recherche dans secteurs connexes de la même zone
-3. **NIVEAU 3**: Si insuffisant, recherche dans zones adjacentes du même secteur
-4. **NIVEAU 4**: Si insuffisant, recherche de sous-traitants spécialisés avec produits finis
-
-SOURCES DE RECHERCHE PRIORITAIRES:
-- Annuaires industriels officiels (KOMPASS, EUROPAGES, etc.)
-- Registres du commerce et bases de données d'entreprises
-- Sites web d'entreprises (section "Nos usines", "Production")
-- Rapports sectoriels et études de marché
-- LinkedIn Company pages avec informations de production
-- Salons professionnels et exposants manufacturiers
-
-CONTRAINTES STRICTES MAINTENUES:
-- Utiliser UNIQUEMENT les produits CGR spécifiés par l'utilisateur
-- Respecter la taille d'entreprise demandée (mais permettre une flexibilité si nécessaire pour atteindre le nombre requis)
-- Cibler prioritairement la zone géographique spécifiée (élargir si nécessaire)
-- Adapter au volume de pièces requis
-- Dans l'argumentaire approche, tu DOIS obligatoirement détailler:
-  * Nom complet et raison sociale
-  * Localisation EXACTE de chaque usine de production
-  * Structure du groupe (maison-mère, filiales, autres sites)
-  * Produits SPÉCIFIQUES fabriqués dans chaque usine
-  * Pourquoi elle a besoin EXACTEMENT des composants CGR
-  * Volumes estimés et capacités de production
-  * Fournisseurs actuels probables
-
-RÉPONSE JSON OBLIGATOIRE avec exactement cette structure (MINIMUM ${10} entreprises):
+FORMAT JSON OBLIGATOIRE (pas de texte en dehors):
 {
   "enterprises": [
     {
-      "nom_entreprise": "Raison sociale complète officielle",
+      "nom_entreprise": "Raison sociale complète",
       "site_web": "URL officielle",
-      "description_activite": "Description détaillée de l'activité de FABRICATION uniquement",
-      "produits_entreprise": ["Produit 1 fabriqué", "Produit 2 fabriqué", "..."],
+      "description_activite": "Description fabrication détaillée",
+      "produits_entreprise": ["Produit 1", "Produit 2"],
       "potentiel_cgr": {
-        "produits_cibles_chez_le_prospect": ["Composants utilisés dans produit 1", "Composants utilisés dans produit 2"],
-        "produits_cgr_a_proposer": ["Uniquement les produits CGR spécifiés par l'utilisateur"],
-        "argumentaire_approche": "DÉTAILLÉ: 1) Nom complet 2) Usines [Ville, Pays] 3) Groupe et structure 4) Produits fabriqués 5) Besoins composants 6) Volumes et capacités 7) Fournisseurs actuels - MINIMUM 250 mots"
+        "produits_cibles_chez_le_prospect": ["Composant 1", "Composant 2"],
+        "produits_cgr_a_proposer": ["Ressorts fil", "Pièces découpées"],
+        "argumentaire_approche": "DÉTAILLÉ: 1) Nom complet 2) Usines [Ville, Pays] 3) Groupe 4) Produits fabriqués 5) Besoins composants 6) Volumes 7) Fournisseurs actuels - Min 200 mots"
       },
-      "fournisseur_actuel_estimation": "Fournisseurs probables basés sur recherche approfondie",
-      "sources": ["Source 1 avec URL", "Source 2 avec URL", "Source 3 avec URL"],
-      "taille_entreprise": "Taille exacte ou estimée",
-      "volume_pieces_estime": "Volume compatible avec les spécifications",
-      "zone_geographique": "Zone géographique précise avec pays"
+      "fournisseur_actuel_estimation": "Fournisseurs probables",
+      "sources": ["Source 1 URL", "Source 2 URL"],
+      "taille_entreprise": "PME/ETI/Grande",
+      "volume_pieces_estime": "Volume estimé",
+      "zone_geographique": "Zone précise avec pays"
     }
   ]
 }
 
-VALIDATION FINALE ULTRA-STRICTE:
-- AU MOINS ${10} entreprises FABRICANTES qualifiées
-- Chaque entreprise avec usines de production localisées
-- Argumentaire détaillé pour chaque entreprise (minimum 250 mots)
-- Sources multiples et vérifiables
-- Aucun concurrent direct CGR
-- Potentiel CGR réaliste et documenté
-- Si moins de ${10} entreprises trouvées initialement → ÉLARGIR LA RECHERCHE
-
-IMPORTANT: Si tu ne peux pas trouver ${10} entreprises dans les critères stricts, informe explicitement dans ta réponse mais continue à chercher avec des critères légèrement élargis tout en maintenant la qualité de fabricant.`;
+IMPORTANT: 
+- Viser 10 entreprises, minimum 5 entreprises qualifiées
+- Si moins de 5 trouvées, élargir géographiquement ou sectoriellement
+- Retourner UNIQUEMENT le JSON, rien d'autre
+- Pas de markdown, pas de texte explicatif`;
   }
 
   private buildEnterpriseSearchPrompt(data: EnterpriseSearchData): string {
-    // Keep existing buildEnterpriseSearchPrompt logic but add emphasis on quantity
     const staticClients = ['Forvia', 'Valeo', 'Schneider Electric', 'Dassault Aviation', 'Thales', 'Safran'];
     
     let additionalClients: string[] = [];
@@ -269,169 +214,119 @@ IMPORTANT: Si tu ne peux pas trouver ${10} entreprises dans les critères strict
       ? data.produitsCGR 
       : ['Ressorts fil', 'Pièces découpées', 'Formage tubes', 'Assemblages', 'Mécatronique', 'Injection plastique'];
     
-    const motsCles = data.motsCles || 'composants mécaniques, précision, qualité';
+    const motsCles = data.motsCles || 'composants mécaniques, précision';
     const usinesCGR = data.usinesCGR && data.usinesCGR.length > 0 ? data.usinesCGR : ['Saint-Yorre', 'PMPC', 'Igé'];
 
-    return `RECHERCHE INTENSIVE: EXACTEMENT ${data.nombreResultats} entreprises FABRICANTES pour CGR International
+    return `RECHERCHE: ${data.nombreResultats} entreprises FABRICANTES pour CGR International
 
-⚠️ OBLIGATION QUANTITÉ: Tu DOIS retourner AU MOINS ${data.nombreResultats} entreprises FABRICANTES qualifiées. Si nécessaire, élargis la recherche géographiquement ou sectoriellement.
+⚠️ RÉPONDS UNIQUEMENT AVEC UN JSON VALIDE - PAS DE TEXTE AVANT/APRÈS
 
-**CONTRAINTES STRICTES À RESPECTER:**
+CRITÈRES RECHERCHE:
 
-**Secteur d'activité PRINCIPAL:** ${secteurPrincipal}
-${allSectors.length > 1 ? `**Secteurs additionnels autorisés:** ${allSectors.slice(1).join(', ')}` : ''}
-- Focus prioritaire sur les FABRICANTS du secteur "${secteurPrincipal}"
-- SI INSUFFISANT: inclure secteurs connexes compatibles avec les produits CGR
-- Entreprises qui conçoivent ET fabriquent des produits dans ces secteurs
-- Avec usines de production identifiées et localisées
+Secteur: ${secteurPrincipal}
+${allSectors.length > 1 ? `Secteurs additionnels: ${allSectors.slice(1).join(', ')}` : ''}
 
-**Zone géographique PRIORITAIRE:** ${zoneGeo}
-- Recherche prioritaire dans ces zones
-- SI INSUFFISANT pour atteindre ${data.nombreResultats} entreprises: élargir aux zones adjacentes
-- Proximité avec les usines CGR: ${usinesCGR.join(', ')} (avantage mais pas obligatoire)
+Zone: ${zoneGeo}
+Taille: ${tailleEntreprise}
 
-**Taille d'entreprise PRÉFÉRÉE:** ${tailleEntreprise}
-${this.getTailleEntrepriseGuidance(tailleEntreprise)}
-- SI INSUFFISANT: inclure toutes tailles de FABRICANTS qualifiés
+Produits CGR autorisés: ${produitsCGRSpecifiques.join(', ')}
+Mots-clés: ${motsCles}
 
-**Produits CGR AUTORISÉS (AUCUN AUTRE):** ${produitsCGRSpecifiques.join(', ')}
-⚠️ CRITIQUE: Ne proposer QUE ces produits dans "produits_cgr_a_proposer"
+Exclusions: ${excludeClients.join(', ')}
 
+OBJECTIF: Trouver ${data.nombreResultats} FABRICANTS (minimum 5) avec:
+- Usines de production identifiées
+- Produits manufacturés propres
+- Besoins en composants CGR
 
+STRATÉGIE:
+1. Recherche principale dans secteur et zone
+2. Si insuffisant, élargir géographiquement
+3. Si insuffisant, inclure secteurs connexes
 
-**Mots-clés spécifiques:** ${motsCles}
-- Utiliser pour affiner la recherche
-- Identifier les besoins correspondants
+VALIDATION ANTI-REVENDEUR:
+- Confirmer usines (adresses)
+- Confirmer fabrication (pas distribution)
+- Confirmer activités R&D
 
-**Exclusions absolues:** ${excludeClients.join(', ')}
-- Éviter ces entreprises et leurs filiales
-- Exclure les concurrents directs CGR
-
-**STRATÉGIE DE RECHERCHE EN CASCADES:**
-
-**ÉTAPE 1 - RECHERCHE PRINCIPALE:**
-Secteur: "${secteurPrincipal}" + Zone: "${zoneGeo}" + Taille: "${tailleEntreprise}"
-Objectif: Minimum ${Math.ceil(data.nombreResultats * 0.7)} entreprises
-
-**ÉTAPE 2 - SI INSUFFISANT, RECHERCHE ÉLARGIE:**
-- Secteurs connexes dans la même zone
-- Même secteur dans zones adjacentes  
-- Tailles d'entreprises différentes
-Objectif: Compléter à ${data.nombreResultats} entreprises
-
-**ÉTAPE 3 - SI ENCORE INSUFFISANT, RECHERCHE EXTENSIVE:**
-- Sous-secteurs spécialisés
-- Zones géographiques plus larges (Europe, international)
-- Entreprises émergentes ou innovantes
-Objectif: ATTEINDRE IMPÉRATIVEMENT ${data.nombreResultats} entreprises
-
-**FOCUS FABRICANTS - RECHERCHE MULTI-SOURCES OBLIGATOIRE:**
-
-Pour CHAQUE entreprise potentielle, rechercher dans:
-1. **Annuaires industriels**: KOMPASS, EUROPAGES, KELLYSEARCH
-2. **Registres officiels**: Societe.com, Verif.com, Companies House
-3. **Sites web**: Section "Nos usines", "Production", "Qui sommes-nous"
-4. **LinkedIn**: Pages entreprise avec informations manufacturing
-5. **Salons professionnels**: Exposants et participants manufacturiers
-
-**VALIDATION ANTI-REVENDEUR RENFORCÉE:**
-Avant d'inclure une entreprise, CONFIRMER:
-- Possède des USINES DE PRODUCTION identifiées (adresses exactes)
-- FABRIQUE ses propres produits (liste précise)
-- A des activités R&D/conception (preuves)
-- Volume de production compatible
-- N'est PAS distributeur/installateur/revendeur
-
-**INFORMATIONS REQUISES PAR ENTREPRISE:**
-- Nom officiel complet et site web
-- Description détaillée de l'activité de fabrication
-- Localisation précise des usines de production
-- Produits manufacturés nécessitant des composants mécaniques
-- Structure groupe complet (maison-mère, filiales)
-- Potentiel réaliste d'utilisation des produits CGR
-- Estimation fournisseurs actuels avec justification
-- Sources multiples et récentes (minimum 3 par entreprise)
-
-**ARGUMENTAIRE OBLIGATOIRE (minimum 250 mots par entreprise):**
-1. Identité complète (nom, groupe, structure)
-2. Usines de production (localisation exacte, capacités)
-3. Produits fabriqués (gamme détaillée par usine)
-4. Besoins en composants CGR (volumes, spécifications)
-5. Marché et clients (secteurs servis, positionnement)
-6. Fournisseurs actuels (estimation et justification)
-7. Potentiel de collaboration (opportunités, volumes)
-
-**VALIDATION FINALE IMPÉRATIVE:**
-✅ EXACTEMENT ${data.nombreResultats} entreprises FABRICANTES minimum
-✅ Chaque entreprise avec usines de production localisées
-✅ Argumentaire détaillé minimum 250 mots par entreprise
-✅ Sources multiples et vérifiables (minimum 3 par entreprise)
-✅ Aucun concurrent direct CGR exclu
-✅ Produits CGR proposés limités à: ${produitsCGRSpecifiques.join(', ')}
-✅ Potentiel réaliste et documenté pour chaque prospect
-
-Si tu ne peux pas atteindre ${data.nombreResultats} entreprises avec les critères stricts, ÉLARGIS progressivement mais MAINTIENS la qualité de fabricant.
-
-RETOURNE UNIQUEMENT LE JSON DEMANDÉ avec ${data.nombreResultats} entreprises minimum.`;
+RETOURNE UNIQUEMENT LE JSON SANS AUCUN TEXTE ADDITIONNEL:
+{
+  "enterprises": [...]
+}`;
   }
 
-  // Handle <think> tags in deep research responses
   private parseEnterpriseResponse(response: any): { enterprises: Enterprise[], total: number, success: boolean, error?: string } {
     try {
       let content = response.choices[0]?.message?.content || '';
       console.log('📄 Contenu reçu (premiers 500 chars):', content.substring(0, 500) + '...');
       
-      // ADDED: Handle <think> tags from sonar-deep-research
+      // Remove <think> tags
       if (content.includes('<think>')) {
-        console.log('🧠 Detected <think> tags, extracting JSON after thinking process...');
+        console.log('🧠 Detected <think> tags, removing...');
         const thinkEndIndex = content.lastIndexOf('</think>');
         if (thinkEndIndex !== -1) {
           content = content.substring(thinkEndIndex + 8).trim();
-          console.log('📄 Content after removing <think> tags:', content.substring(0, 300) + '...');
         }
       }
       
-      // Multiple strategies to extract JSON
-      let jsonStr = this.extractJsonFromContent(content);
+      // Remove markdown formatting
+      content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      
+      // If content starts with markdown header or text, try to find JSON
+      if (content.startsWith('#') || !content.startsWith('{')) {
+        console.log('⚠️ Content does not start with JSON, searching for JSON block...');
+        
+        // Try to find JSON between { and }
+        const jsonMatch = content.match(/\{[\s\S]*"enterprises"[\s\S]*\]/);
+        if (jsonMatch) {
+          // Find the matching closing brace
+          let braceCount = 0;
+          let jsonEnd = -1;
+          for (let i = jsonMatch.index!; i < content.length; i++) {
+            if (content[i] === '{') braceCount++;
+            if (content[i] === '}') braceCount--;
+            if (braceCount === 0) {
+              jsonEnd = i + 1;
+              break;
+            }
+          }
+          
+          if (jsonEnd > 0) {
+            content = content.substring(jsonMatch.index!, jsonEnd);
+            console.log('✅ Extracted JSON block');
+          }
+        } else {
+          console.log('❌ No JSON structure found, attempting fallback');
+          return this.createFallbackResponse(content);
+        }
+      }
+      
+      // Clean extracted content
+      content = this.cleanJsonString(content);
+      
       let parsed: any;
       
-      // Try direct parsing first
       try {
-        parsed = JSON.parse(jsonStr);
+        parsed = JSON.parse(content);
         console.log('✅ Parsing direct réussi');
       } catch (error) {
         console.log('⚠️ Parsing direct échoué, tentative de réparation...');
         
-        // Try repair and parse
-        jsonStr = this.repairJsonString(jsonStr);
+        content = this.repairJsonString(content);
         try {
-          parsed = JSON.parse(jsonStr);
+          parsed = JSON.parse(content);
           console.log('✅ Parsing avec réparation réussi');
         } catch (error2) {
-          console.log('⚠️ Parsing avec réparation échoué, tentative de parsing manuel...');
-          
-          // Manual parsing as last resort
-          const manualResults = this.manualParseEnterprises(content);
-          if (manualResults.length > 0) {
-            console.log('✅ Parsing manuel réussi');
-            return {
-              enterprises: manualResults,
-              total: manualResults.length,
-              success: true
-            };
-          }
-          
-          throw new Error(`Impossible de parser le JSON: ${error2}`);
+          console.log('⚠️ Parsing échoué, utilisation de fallback...');
+          return this.createFallbackResponse(response.choices[0]?.message?.content || '');
         }
       }
       
-      // Validate structure
       if (!parsed || !Array.isArray(parsed.enterprises)) {
         console.error('❌ Structure JSON invalide:', parsed);
-        return { enterprises: [], total: 0, success: false, error: 'Structure JSON invalide' };
+        return this.createFallbackResponse(response.choices[0]?.message?.content || '');
       }
 
-      // Clean and validate enterprises
       const cleanedEnterprises = this.validateAndCleanEnterprises(parsed.enterprises);
       
       console.log(`✅ ${cleanedEnterprises.length} entreprises parsées avec succès`);
@@ -443,271 +338,104 @@ RETOURNE UNIQUEMENT LE JSON DEMANDÉ avec ${data.nombreResultats} entreprises mi
       
     } catch (error: any) {
       console.error('❌ Erreur parsing finale:', error.message);
-      console.error('❌ Contenu brut:', response.choices[0]?.message?.content?.substring(0, 1000));
-      
-      return { 
-        enterprises: [], 
-        total: 0, 
-        success: false, 
-        error: `Erreur parsing: ${error.message}` 
-      };
+      return this.createFallbackResponse(response.choices[0]?.message?.content || '');
     }
   }
 
-  // Rest of the methods remain the same...
-  private extractJsonFromContent(content: string): string {
-    // Remove any text before and after JSON
-    let jsonStr = content.trim();
-    
-    // Remove markdown code blocks
-    jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/\n?```$/g, '');
-    jsonStr = jsonStr.replace(/```\n?/g, '').replace(/\n?```$/g, '');
-    
-    // Find JSON boundaries
-    const jsonMatch = jsonStr.match(/\{[\s\S]*"enterprises"[\s\S]*\[[\s\S]*?\][\s\S]*?\}/);
-    if (jsonMatch) {
-      return jsonMatch[0];
-    }
-    
-    // Alternative: find by braces
-    const firstBrace = jsonStr.indexOf('{');
-    const lastBrace = jsonStr.lastIndexOf('}');
-    
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      return jsonStr.substring(firstBrace, lastBrace + 1);
-    }
-    
-    return jsonStr;
-  }
-
-  // Keep all other existing methods unchanged...
-  private getTailleEntrepriseGuidance(taille: string): string {
-    switch (taille) {
-      case 'PME':
-        return `- Cibler prioritairement des PME FABRICANTES (50-250 salariés)
-- Si insuffisant: inclure ETI avec production similaire
-- Avec usines de production propres
-- Entreprises avec besoins spécifiques et flexibilité`;
-      
-      case 'ETI':
-        return `- Cibler prioritairement des ETI FABRICANTES (250-5000 salariés)
-- Si insuffisant: inclure PME et grandes entreprises
-- Avec plusieurs sites de production possibles
-- Volumes moyens à importants`;
-      
-      case 'Grande entreprise':
-        return `- Cibler prioritairement des grandes entreprises FABRICANTES (5000+ salariés)
-- Si insuffisant: inclure ETI avec volumes importants
-- Avec multiples usines de production
-- Volumes importants et contrats long terme`;
-      
-      default:
-        return `- Toutes tailles d'entreprises FABRICANTES acceptées
-- Adapter l'approche selon la taille
-- Priorité aux entreprises avec volumes compatibles`;
-    }
-  }
-
-  // Keep all remaining methods unchanged (getSpecificSectorGuidance, getSectorSpecificSearchStrategy, etc.)
-  private getSpecificSectorGuidance(secteur: string): string {
-    const secteurLower = secteur.toLowerCase();
-    
-    if (secteurLower.includes('immobil') || secteurLower.includes('real estate') || secteurLower.includes('bâtiment') || secteurLower.includes('construction')) {
-      return `Pour le secteur IMMOBILIER/CONSTRUCTION, rechercher des FABRICANTS de:
-• Systèmes de fermeture (portes, fenêtres, volets) avec usines identifiées
-• Équipements de sécurité pour bâtiments (contrôle d'accès, alarmes)
-• Systèmes d'ouverture automatique (portes automatiques, portails)
-• Équipements de confort (climatisation, ventilation, chauffage)
-• Mobilier urbain et équipements publics
-• Systèmes d'ascenseurs et monte-charges
-• Équipements de parking automatisés
-• Systèmes de stores et protection solaire
-
-ÉVITER: Promoteurs immobiliers, agences immobilières, bureaux d'architecture, installateurs`;
-    }
-    
-    return `Pour le secteur "${secteur}", rechercher des FABRICANTS avec:
-• Usines de production identifiées et localisées
-• Produits manufacturés intégrant des composants mécaniques
-• Activités de conception et développement
-• Capacités industrielles adaptées aux volumes requis
-• Structure organisationnelle avec R&D et production
-• Marchés cibles nécessitant des composants de précision`;
-  }
-
-  private getSectorSpecificSearchStrategy(secteur: string, produitsCGR: string[]): string {
-    // Keep existing implementation
-    const produitsStr = produitsCGR.join(', ');
-    const secteurLower = secteur.toLowerCase();
-    
-    if (secteurLower.includes('immobil') || secteurLower.includes('real estate') || secteurLower.includes('bâtiment') || secteurLower.includes('construction')) {
-      return `SECTEUR IMMOBILIER/CONSTRUCTION - Rechercher des FABRICANTS avec usines de:
-• Systèmes de fermeture (avec sites production) intégrant des ${produitsStr}
-• Équipements de sécurité bâtiment conçus et fabriqués avec mécanismes précis
-• Portes et fenêtres automatiques avec usines identifiées
-• Systèmes d'ascenseurs et monte-charges avec composants mécaniques
-• Équipements HVAC avec sites de fabrication et assemblages
-• Mobilier urbain spécialisé avec activités de production
-• Systèmes de stores et protection solaire fabriqués
-• Équipements de parking automatisés avec usines propres
-
-ÉVITER: Promoteurs immobiliers, agences, architectes, installateurs équipements`;
-    }
-    
-    switch (secteurLower) {
-      case 'médical':
-        return `SECTEUR MÉDICAL - Rechercher des FABRICANTS avec usines de:
-• Dispositifs médicaux (avec localisation usines) intégrant des ${produitsStr}
-• Équipements hospitaliers (conception + production) avec mécanismes précis
-• Instruments chirurgicaux fabriqués (pas distribués) nécessitant des composants ressort
-• Appareils de diagnostic avec usines identifiées et systèmes mécaniques
-• Prothèses et orthèses avec sites de fabrication et mécanismes de précision
-• Matériel de rééducation conçu et fabriqué avec composants mécaniques
-
-ÉVITER: Distributeurs matériel médical, installateurs équipements hospitaliers`;
-        
-      case 'aéronautique':
-        return `SECTEUR AÉRONAUTIQUE - Rechercher des FABRICANTS avec usines de:
-• Composants d'aéronefs fabriqués (avec sites production) nécessitant des ${produitsStr}
-• Équipements de cabine conçus et produits avec mécanismes précis
-• Systèmes de navigation avec usines identifiées intégrant des composants mécaniques
-• Équipements de sécurité aéronautique fabriqués (pas distribués)
-• Outillage aéronautique spécialisé avec sites de production
-• Composants satellites et drones avec activités conception/fabrication
-
-ÉVITER: Distributeurs aéronautiques, sous-traitants sans produits finis`;
-        
-      case 'automobile':
-        return `SECTEUR AUTOMOBILE - Rechercher des FABRICANTS avec usines de:
-• Équipementiers automobiles (avec usines identifiées) intégrant des ${produitsStr}
-• Composants d'habitacle fabriqués avec mécanismes précis
-• Équipements électriques automobile avec sites de production
-• Accessoires et équipements de confort conçus et fabriqués
-• Systèmes spécialisés (hors grands constructeurs) avec usines propres
-• Outillage automobile spécialisé avec activités de fabrication
-
-ÉVITER: Distributeurs pièces auto, garage, installateurs équipements`;
-        
-      case 'énergie':
-        return `SECTEUR ÉNERGIE - Rechercher des FABRICANTS avec usines de:
-• Équipements éoliens fabriqués (avec sites production) nécessitant des ${produitsStr}
-• Systèmes solaires avec usines identifiées et composants mécaniques
-• Équipements de stockage d'énergie conçus et fabriqués
-• Installations de production d'énergie avec activités fabrication
-• Systèmes de distribution énergétique avec usines propres
-• Équipements de mesure et contrôle énergétique fabriqués
-
-ÉVITER: Installateurs éolien/solaire, distributeurs équipements énergie`;
-        
-      case 'défense':
-        return `SECTEUR DÉFENSE - Rechercher des FABRICANTS avec usines de:
-• Équipements militaires fabriqués (avec sites production) intégrant des ${produitsStr}
-• Systèmes d'armes avec usines identifiées et mécanismes précis
-• Véhicules blindés et composants avec activités de fabrication
-• Équipements de communication militaire conçus et fabriqués
-• Systèmes de protection et sécurité avec usines propres
-• Matériel d'entraînement militaire avec sites de production
-
-ÉVITER: Distributeurs matériel militaire, intégrateurs systèmes`;
-        
-      default:
-        return `SECTEUR "${secteur.toUpperCase()}" - Rechercher des FABRICANTS avec usines de:
-• Équipements spécialisés fabriqués (avec sites production) nécessitant des ${produitsStr}
-• Machines et systèmes avec usines identifiées et mécanismes précis
-• Produits manufacturés intégrant des composants mécaniques
-• Outillage spécialisé avec activités de fabrication
-• Équipements de mesure et contrôle avec usines propres
-• Systèmes automatisés avec sites de production
-
-ÉVITER: Distributeurs, revendeurs, installateurs, intégrateurs`;
-    }
+  private cleanJsonString(str: string): string {
+    return str
+      .trim()
+      .replace(/^\s*\{/, '{')
+      .replace(/\}\s*$/, '}')
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, ''); // Remove control characters
   }
 
   private repairJsonString(jsonStr: string): string {
     let repaired = jsonStr;
     
-    // Remove trailing commas
     repaired = repaired.replace(/,(\s*[}\]])/g, '$1');
-    
-    // Fix unescaped quotes in strings
-    repaired = repaired.replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":');
-    
-    // Normalize whitespace
+    repaired = repaired.replace(/}\s*{/g, '},{');
+    repaired = repaired.replace(/]\s*\[/g, '],[');
     repaired = repaired.replace(/\s+/g, ' ');
     
-    // Fix missing commas between objects
-    repaired = repaired.replace(/}\s*{/g, '},{');
-    
-    // Fix missing commas between array elements
-    repaired = repaired.replace(/]\s*\[/g, '],[');
-    
-    // Ensure proper string quotes for values
-    repaired = repaired.replace(/:\s*([^",\[\]{}]+)(\s*[,}\]])/g, (match, value, suffix) => {
-      const trimmedValue = value.trim();
-      if (trimmedValue === 'true' || trimmedValue === 'false' || trimmedValue === 'null' || !isNaN(Number(trimmedValue))) {
-        return `: ${trimmedValue}${suffix}`;
-      }
-      return `: "${trimmedValue}"${suffix}`;
-    });
-    
     return repaired;
+  }
+
+  private createFallbackResponse(content: string): { enterprises: Enterprise[], total: number, success: boolean, error?: string } {
+    console.log('🔄 Creating fallback response from text content...');
+    
+    // Try manual parsing
+    const enterprises = this.manualParseEnterprises(content);
+    
+    if (enterprises.length > 0) {
+      console.log(`✅ Fallback successful: ${enterprises.length} enterprises extracted`);
+      return {
+        enterprises: enterprises,
+        total: enterprises.length,
+        success: true
+      };
+    }
+    
+    console.log('❌ Fallback failed: No enterprises could be extracted');
+    return { 
+      enterprises: [], 
+      total: 0, 
+      success: false, 
+      error: 'Could not parse response - format not recognized. Try reducing search criteria or changing sector.'
+    };
   }
 
   private manualParseEnterprises(content: string): Enterprise[] {
     const enterprises: Enterprise[] = [];
     
-    // Enhanced regex patterns for enterprise parsing
-    const enterprisePatterns = [
-      // Complete enterprise object
-      /\{\s*"nom_entreprise"\s*:\s*"([^"]+)"[\s\S]*?"site_web"\s*:\s*"([^"]*)"[\s\S]*?"description_activite"\s*:\s*"([^"]+)"[\s\S]*?"produits_entreprise"\s*:\s*\[([^\]]*)\][\s\S]*?"potentiel_cgr"\s*:\s*\{[\s\S]*?"produits_cibles_chez_le_prospect"\s*:\s*\[([^\]]*)\][\s\S]*?"produits_cgr_a_proposer"\s*:\s*\[([^\]]*)\][\s\S]*?"argumentaire_approche"\s*:\s*"([^"]+)"[\s\S]*?\}[\s\S]*?"fournisseur_actuel_estimation"\s*:\s*"([^"]*)"[\s\S]*?"sources"\s*:\s*\[([^\]]*)\][\s\S]*?\}/g
+    // Pattern 1: Look for company names in headers or lists
+    const companyPatterns = [
+      /(?:^|\n)(?:#{1,4}\s+)?(\d+[\.\)]\s+)?([A-ZÀÂÄÇÉÈÊËÏÎÔÙÛÜ][A-Za-zÀ-ÿ\s\-&'\.]{3,50}(?:SAS|SA|SARL|GmbH|Ltd|Inc|Corp)?)/gm,
+      /\*\*([A-ZÀÂÄÇÉÈÊËÏÎÔÙÛÜ][A-Za-zÀ-ÿ\s\-&'\.]{3,50}(?:SAS|SA|SARL|GmbH|Ltd)?)\*\*/g
     ];
     
-    for (const pattern of enterprisePatterns) {
+    const foundCompanies = new Set<string>();
+    
+    for (const pattern of companyPatterns) {
       let match;
-      while ((match = pattern.exec(content)) !== null && enterprises.length < 15) {
-        try {
-          const [, nom_entreprise, site_web, description_activite, produits_str, cibles_str, cgr_str, argumentaire, fournisseur, sources_str] = match;
-          
-          if (nom_entreprise && description_activite) {
-            enterprises.push({
-              nom_entreprise: nom_entreprise.trim(),
-              site_web: this.cleanWebsiteUrl(site_web || ''),
-              description_activite: description_activite.trim(),
-              produits_entreprise: this.parseArrayString(produits_str),
-              potentiel_cgr: {
-                produits_cibles_chez_le_prospect: this.parseArrayString(cibles_str),
-                produits_cgr_a_proposer: this.parseArrayString(cgr_str),
-                argumentaire_approche: argumentaire?.trim() || ''
-              },
-              fournisseur_actuel_estimation: fournisseur?.trim() || 'Non spécifié',
-              sources: this.parseArrayString(sources_str),
-              taille_entreprise: 'Non spécifié',
-              volume_pieces_estime: 'Non spécifié',
-              zone_geographique: 'Non spécifié'
-            });
-          }
-        } catch (error) {
-          console.error('❌ Erreur parsing manuel pour une entreprise:', error);
+      while ((match = pattern.exec(content)) !== null && foundCompanies.size < 10) {
+        const companyName = (match[2] || match[1]).trim();
+        
+        // Filter out generic headers
+        if (!companyName.match(/^(Introduction|Conclusion|Résumé|Contexte|Analyse|Étude|Liste|Entreprises?|Fabricants?)/i)) {
+          foundCompanies.add(companyName);
         }
       }
     }
     
-    return enterprises;
-  }
-
-  private parseArrayString(arrayStr: string): string[] {
-    if (!arrayStr || arrayStr.trim() === '') return [];
+    console.log(`🔍 Found ${foundCompanies.size} potential company names`);
     
-    return arrayStr
-      .split(',')
-      .map(item => item.trim().replace(/^["']|["']$/g, ''))
-      .filter(item => item.length > 0 && item !== 'null' && item !== 'undefined');
+    // Convert to enterprise objects
+    Array.from(foundCompanies).forEach(companyName => {
+      enterprises.push({
+        nom_entreprise: companyName,
+        site_web: '',
+        description_activite: 'Fabricant identifié - détails à compléter',
+        produits_entreprise: [],
+        potentiel_cgr: {
+          produits_cibles_chez_le_prospect: [],
+          produits_cgr_a_proposer: [],
+          argumentaire_approche: 'Entreprise identifiée lors de la recherche - nécessite validation et analyse complémentaire'
+        },
+        fournisseur_actuel_estimation: 'À identifier',
+        sources: [],
+        taille_entreprise: 'Non spécifié',
+        volume_pieces_estime: 'Non spécifié',
+        zone_geographique: 'Non spécifié'
+      });
+    });
+    
+    return enterprises.slice(0, 10);
   }
 
   private validateAndCleanEnterprises(enterprises: any[]): Enterprise[] {
     return enterprises
       .filter(enterprise => {
-        // Basic validation
         if (!enterprise || typeof enterprise !== 'object') return false;
         if (!enterprise.nom_entreprise || typeof enterprise.nom_entreprise !== 'string') return false;
         if (!enterprise.description_activite || typeof enterprise.description_activite !== 'string') return false;
@@ -739,7 +467,7 @@ RETOURNE UNIQUEMENT LE JSON DEMANDÉ avec ${data.nombreResultats} entreprises mi
         volume_pieces_estime: String(enterprise.volume_pieces_estime || 'Non spécifié').trim(),
         zone_geographique: String(enterprise.zone_geographique || 'Non spécifié').trim()
       }))
-      .slice(0, 15); // Increased limit to 15 enterprises
+      .slice(0, 15);
   }
 
   private cleanWebsiteUrl(url: string): string {

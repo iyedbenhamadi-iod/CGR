@@ -155,7 +155,6 @@ function getUserId(request: NextRequest): string {
 }
 
 async function makeApiCall(url: string, body: any, retries: number = 2): Promise<Response> {
-  // ... (makeApiCall implementation remains the same)
   for (let attempt = 1; attempt <= retries + 1; attempt++) {
     try {
       console.log(`📡 API call attempt ${attempt}/${retries + 1}: ${url}`);

@@ -1,12 +1,11 @@
 "use client"
 import React from "react"
 import { Label } from "@/components/ui/label"
-import { Slider } from "@/components/ui/slider"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { type StepProps, PRODUITS_CGR, CLIENTS_EXISTANTS, USINES_CGR } from "@/lib/form-types"
+import { type StepProps, PRODUITS_CGR, CLIENTS_EXISTANTS } from "@/lib/form-types"
 
 export default function StepCGRContext({ formData, setFormData }: StepProps) {
   const handleArrayChange = (field: string, value: string, checked: boolean) =>
@@ -19,12 +18,12 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
 
   const handleAutresProduits = (checked: boolean) => {
     if (!checked) {
-      // If unchecking, remove the custom product and clear the text
+      // If unchecking, remove custom products and clear the text
       setFormData((prev) => ({
         ...prev,
         autresProduits: "",
-        produitsCGR: prev.produitsCGR.filter(item => !prev.autresProduits || item !== prev.autresProduits),
-        showAutresProduits: false // Add this flag to track visibility
+        produitsCGR: prev.produitsCGR.filter(item => PRODUITS_CGR.includes(item)),
+        showAutresProduits: false
       }))
     } else {
       // If checking, show the input field
@@ -37,21 +36,25 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
 
   const handleAutresProduitsInput = (value: string) => {
     setFormData((prev) => {
-      // Remove the previous custom product if it exists
-      const filteredProduits = prev.produitsCGR.filter(item => !prev.autresProduits || item !== prev.autresProduits)
+      // Get only standard products (remove all custom ones)
+      const standardProduits = prev.produitsCGR.filter(item => PRODUITS_CGR.includes(item))
+      
+      // Parse the new custom products (comma or line separated)
+      const customProduits = value
+        .split(/[,\n]/)
+        .map(p => p.trim())
+        .filter(p => p !== '')
       
       return {
         ...prev,
         autresProduits: value,
-        // Add the new custom product to the array if it's not empty
-        produitsCGR: value.trim() ? [...filteredProduits, value] : filteredProduits
+        produitsCGR: [...standardProduits, ...customProduits]
       }
     })
   }
 
   // Initialize clientsExclure with static clients if not already done
   React.useEffect(() => {
-    // FIXED: Better initialization logic - only set if empty or undefined
     if (!formData.clientsExclure || formData.clientsExclure.trim() === '') {
       setFormData((prev) => ({
         ...prev,
@@ -76,12 +79,11 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
     }))
   }
 
-  // Fixed: Use a dedicated flag for checkbox state or check if field should be visible
-  const isAutresChecked = formData.showAutresProduits || 
-                          (formData.autresProduits !== "" && formData.autresProduits !== undefined) || 
-                          formData.produitsCGR.some(item => !PRODUITS_CGR.includes(item))
+  // Check if "Autres" should be shown - detect custom products or explicit flag
+  const customProducts = formData.produitsCGR.filter(p => !PRODUITS_CGR.includes(p))
+  const isAutresChecked = formData.showAutresProduits === true || customProducts.length > 0
 
-  // ADDED: Get the additional clients (those not in CLIENTS_EXISTANTS)
+  // Get the additional clients (those not in CLIENTS_EXISTANTS)
   const getAdditionalClients = () => {
     if (!formData.clientsExclure) return '';
     
@@ -129,20 +131,29 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
             </div>
             
             {isAutresChecked && (
-              <div className="ml-6">
+              <div className="ml-6 space-y-2">
                 <Input
                   id="champ-libre-produits"
-                  value={formData.autresProduits || ""}
+                  value={formData.autresProduits || customProducts.join(', ')}
                   onChange={(e) => handleAutresProduitsInput(e.target.value)}
-                  placeholder="Spécifiez les autres produits souhaités..."
+                  placeholder="Spécifiez les autres produits souhaités (séparés par des virgules)..."
                   className="text-base border-border focus:border-primary focus:ring-primary"
                 />
+                {customProducts.length > 0 && !formData.autresProduits && (
+                  <div className="flex flex-wrap gap-2">
+                    <p className="text-xs text-muted-foreground">Produits personnalisés détectés:</p>
+                    {customProducts.map((product, idx) => (
+                      <Badge key={idx} variant="secondary" className="text-xs">
+                        {product}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
       </div>
-
 
       {/* Clients à exclure */}
       <div className="space-y-4">
@@ -166,19 +177,17 @@ export default function StepCGRContext({ formData, setFormData }: StepProps) {
           </div>
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Clients supplémentaires à exclure :</p>
-          <Textarea
-            id="clientsExclure"
-            value={getAdditionalClients()}
-            onChange={(e) => handleClientsExclureChange(e.target.value)}
-            placeholder="Ajouter d'autres clients à exclure (un par ligne)..."
-            rows={2}
-            className="min-h-[70px] text-base border-border focus:border-primary focus:ring-primary"
-          />
+            <Textarea
+              id="clientsExclure"
+              value={getAdditionalClients()}
+              onChange={(e) => handleClientsExclureChange(e.target.value)}
+              placeholder="Ajouter d'autres clients à exclure (un par ligne)..."
+              rows={2}
+              className="min-h-[70px] text-base border-border focus:border-primary focus:ring-primary"
+            />
           </div>
         </div>
       </div>
-
-    
     </div>
   )
 }

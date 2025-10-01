@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     const openaiClient = new OpenAIBrainstormingClient();
     const marketResult = await withTimeout(
       openaiClient.generateMarketBrainstorming(brainstormingData),
-      60000 // 60 seconds for Perplexity (includes web search)
+      600000 // 60 seconds for Perplexity (includes web search)
     );
     
     console.log('🎯 Résultat:', { 

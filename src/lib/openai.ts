@@ -62,7 +62,7 @@ export class OpenAIBrainstormingClient {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
           },
-          timeout: 60000
+          timeout: 600000
         }
       );
       
@@ -164,7 +164,7 @@ VALIDATION DE PERTINENCE:
 - Taille d'entreprise cible: ${tailleEntreprise}
 
 **MISSION CRITIQUE:**
-Identifie exactement 5 opportunités de marché EXCLUSIVEMENT dans la niche "${nicheSpecifique}".
+Identifie des opportunités de marché EXCLUSIVEMENT dans la niche "${nicheSpecifique}".
 
 ⚠️ CONTRAINTE ABSOLUE: Reste dans la niche "${nicheSpecifique}" uniquement.
 Ne propose PAS d'applications dans d'autres sous-secteurs de ${secteurGeneral}.
@@ -199,7 +199,7 @@ Retourne uniquement le JSON demandé.`;
 L'utilisateur cherche des opportunités dans le secteur ${secteurGeneral} mais n'a pas spécifié de niche particulière.
 
 Utilise tes capacités de recherche en temps réel pour:
-1. Identifier 5 SOUS-SECTEURS/NICHES prometteuses dans ${secteurGeneral}
+1. Identifier des SOUS-SECTEURS/NICHES prometteuses dans ${secteurGeneral}
 2. Privilégier les niches avec:
    - Forte croissance récente (2024-2025)
    - Innovations technologiques
@@ -307,34 +307,13 @@ Retourne uniquement le JSON demandé.`;
   }
 
   private validateAndCleanMarkets(markets: any[], originalData: BrainstormingData): MarketOpportunity[] {
-    const nicheSpecifiee = originalData.secteurActiviteLibre?.toLowerCase();
-    
     return markets
       .filter(market => {
+        // Only basic validation - market must exist and have required fields
         if (!market || typeof market !== 'object') return false;
         if (!market.nom_marche || !market.justification) return false;
-        
-        // If niche was specified, validate relevance
-        if (nicheSpecifiee) {
-          const nomMarche = this.normalizeForComparison(market.nom_marche);
-          const sousSecteur = this.normalizeForComparison(market.sous_secteur_specifique || '');
-          const justification = this.normalizeForComparison(market.justification);
-          const nicheNormalized = this.normalizeForComparison(nicheSpecifiee);
-          
-          // Check if market is relevant to specified niche
-          const isRelevant = nomMarche.includes(nicheNormalized) || 
-                            sousSecteur.includes(nicheNormalized) ||
-                            justification.includes(nicheNormalized);
-          
-          if (!isRelevant) {
-            console.log(`⚠️ Marché filtré (hors niche): ${market.nom_marche}`);
-            return false;
-          }
-        }
-        
-        return market.justification.length >= 100;
+        return true;
       })
-      
       .map(market => ({
         nom_marche: String(market.nom_marche).trim(),
         justification: String(market.justification).trim(),
@@ -349,6 +328,6 @@ Retourne uniquement le JSON demandé.`;
         sous_secteur_specifique: String(market.sous_secteur_specifique || market.nom_marche).trim(),
         niveau_pertinence: market.niveau_pertinence || 'moyenne'
       }))
-      .slice(0, 5);
+      .slice(0, 10);
   }
 }

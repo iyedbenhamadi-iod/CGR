@@ -981,10 +981,11 @@ if (!debugHasResults && totalFound > 0) {
                     opportunity.nom_marche, 
                     opportunity.produits_cgr_applicables
                   )}
-                  className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                  className="bg-accent hover:bg-accent/90 text-accent-foreground cursor-pointer"
                   size="sm"
+                
                 >
-                  <Building2 className="w-4 h-4 mr-2" />
+                  <Building2 className="w-4 h-4 mr-2"  />
                   Rechercher des entreprises
                 </Button>
               )}
