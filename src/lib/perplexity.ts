@@ -1,4 +1,4 @@
-// lib/perplexity.ts - Fixed version with better JSON extraction
+// lib/perplexity.ts - Corrected version with robust JSON parsing
 import axios from 'axios';
 
 interface Enterprise {
@@ -35,6 +35,7 @@ interface EnterpriseSearchData {
 export class PerplexityEnterpriseClient {
   private apiKey: string;
   private baseUrl = 'https://api.perplexity.ai';
+  private maxRetries = 3;
 
   constructor() {
     this.apiKey = process.env.PERPLEXITY_API_KEY!;
@@ -46,139 +47,158 @@ export class PerplexityEnterpriseClient {
   async searchEnterprises(searchData: EnterpriseSearchData): Promise<any> {
     const prompt = this.buildEnterpriseSearchPrompt(searchData);
     
-    try {
-      console.log('🔍 Recherche d\'entreprises avec Perplexity Deep Research...');
-      
-      const allSectors = [
-        ...(searchData.secteursActivite || []),
-        ...(searchData.secteurActiviteLibre ? [searchData.secteurActiviteLibre] : [])
-      ].filter(Boolean);
-      
-      const allZones = [
-        ...(searchData.zoneGeographique || []),
-        ...(searchData.zoneGeographiqueLibre ? [searchData.zoneGeographiqueLibre] : [])
-      ].filter(Boolean);
-      
-      console.log('📊 Paramètres de recherche:', {
-        secteur: allSectors.length > 0 ? allSectors[0] : 'Non spécifié',
-        secteurs_complets: allSectors,
-        zone: allZones.join(', '),
-        taille: searchData.tailleEntreprise || 'Toutes tailles',
-        produits: searchData.produitsCGR?.join(', ') || 'Tous produits CGR',
-        clientsExclure: searchData.clientsExclure || 'Aucun',
-        nombreResultats: searchData.nombreResultats
-      });
-      
-      const response = await axios.post(
-        `${this.baseUrl}/chat/completions`,
-        {
-          model: 'sonar',
-          messages: [
-            { role: 'system', content: this.getSystemPrompt() },
-            { role: 'user', content: prompt }
-          ],
-          max_tokens: 8000,
-          temperature: 0.1,
-          search_recency_filter: 'month',
-search_domain_filter: [
-  'linkedin.com', 
-  'companieshouse.gov.uk', 
-  'societe.com', 
-  'verif.com',
-  'kompass.com',        // Ajout
-  'europages.com',      // Ajout
-  'kellysearch.com',    // Ajout
-  'infogreffe.fr',      // Ajout (France)
-  'northdata.com',      // Ajout (Allemagne)
-  'companiesintheuk.co.uk' // Ajout (UK)
-]        },
-        {
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json'
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        console.log(`Tentative ${attempt}/${this.maxRetries} - Recherche Perplexity...`);
+        
+        const allSectors = [
+          ...(searchData.secteursActivite || []),
+          ...(searchData.secteurActiviteLibre ? [searchData.secteurActiviteLibre] : [])
+        ].filter(Boolean);
+        
+        const allZones = [
+          ...(searchData.zoneGeographique || []),
+          ...(searchData.zoneGeographiqueLibre ? [searchData.zoneGeographiqueLibre] : [])
+        ].filter(Boolean);
+        
+        console.log('Paramètres:', {
+          secteur: allSectors[0] || 'Non spécifié',
+          zone: allZones.join(', '),
+          résultats: searchData.nombreResultats
+        });
+        
+        const response = await axios.post(
+          `${this.baseUrl}/chat/completions`,
+          {
+            model: 'sonar',
+            messages: [
+              { role: 'system', content: this.getSystemPrompt() },
+              { role: 'user', content: prompt }
+            ],
+            max_tokens: 8000,
+            temperature: 0.1,
+            search_recency_filter: 'month',
+            search_domain_filter: [
+              'linkedin.com', 
+              'companieshouse.gov.uk', 
+              'societe.com', 
+              'verif.com',
+              'kompass.com',
+              'europages.com',
+              'kellysearch.com',
+              'infogreffe.fr',
+              'northdata.com',
+              'companiesintheuk.co.uk'
+            ]
           },
-          timeout: 900000
+          {
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 900000,
+            validateStatus: (status) => status < 500
+          }
+        );
+        
+        if (response.status >= 400) {
+          throw new Error(`API Error ${response.status}: ${JSON.stringify(response.data)}`);
         }
-      );
-      
-      console.log('✅ Réponse Perplexity Deep Research reçue');
-      return this.parseEnterpriseResponse(response.data);
-    } catch (error: any) {
-      console.error('❌ Erreur Perplexity API:', {
-        status: error.response?.status,
-        message: error.message,
-        data: error.response?.data
-      });
-      
-      return {
-        enterprises: [],
-        total: 0,
-        success: false,
-        error: `Perplexity API Error: ${error.response?.status || 'Unknown'} - ${error.message}`
-      };
+        
+        console.log('Réponse Perplexity reçue');
+        const result = this.parseEnterpriseResponse(response.data);
+        
+        if (result.success && result.enterprises.length > 0) {
+          console.log(`✓ Succès: ${result.enterprises.length} entreprises`);
+          return result;
+        }
+        
+        if (result.success) {
+          return result;
+        }
+        
+        throw new Error(result.error || 'Parsing failed');
+        
+      } catch (error: any) {
+        lastError = error;
+        console.error(`✗ Tentative ${attempt} échouée:`, error.message);
+        
+        if (error.response?.status === 400 || error.response?.status === 401) {
+          break;
+        }
+        
+        if (attempt < this.maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+          console.log(`⏳ Nouvelle tentative dans ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
+    
+    console.error('✗ Toutes les tentatives ont échoué');
+    return {
+      enterprises: [],
+      total: 0,
+      success: false,
+      error: lastError?.message || 'Échec après plusieurs tentatives'
+    };
   }
 
   private getSystemPrompt(): string {
     return `Tu es un expert en intelligence économique spécialisé dans l'identification de prospects FABRICANTS pour CGR International.
 
-RÈGLE CRITIQUE DE FORMAT: Ta réponse DOIT être UNIQUEMENT un objet JSON valide, sans texte avant ou après, sans balises markdown, sans explication.
+RÈGLE CRITIQUE: Retourne UNIQUEMENT un objet JSON valide. 
+- PAS de texte avant ou après le JSON
+- PAS de commentaires dans le JSON
+- PAS de virgules en fin de tableau ou objet
+- Commence par { et termine par }
+- Tous les guillemets doivent être échappés correctement
 
-COMMENCE DIRECTEMENT PAR { et TERMINE PAR }
+IMPÉRATIF: Chaque objet entreprise doit être COMPLET avec TOUTES les propriétés.
 
-MISSION: Identifier entre 5 et 10 entreprises FABRICANTES (viser 10 si possible) qui:
-- Possèdent des USINES DE PRODUCTION identifiées
-- Conçoivent et fabriquent des produits finis
-- Ont des besoins en composants mécaniques compatibles CGR
-
-PRODUITS CGR DISPONIBLES:
-- Ressorts (fil, plat, torsion)
-- Pièces découpées de précision
-- Formage de tubes
-- Assemblages automatisés
-- Mécatronique
-- Injection plastique
-
-⚠️ EXCLURE ABSOLUMENT:
-- Revendeurs, distributeurs, négociants
-- Installateurs, intégrateurs, bureau d'études
-- Services (maintenance, SAV)
-- Fabricants de ressorts/pièces découpées/tubes (CONCURRENTS CGR)
-- Entreprises nommées "CGR"
-
-VALIDATION REQUISE pour chaque entreprise:
-1. A des USINES identifiées (ville, pays)
-2. FABRIQUE ses propres produits
-3. Fait partie d'un GROUPE (si applicable)
-4. A des besoins en composants CGR
-
-FORMAT JSON OBLIGATOIRE (pas de texte en dehors):
+Format JSON OBLIGATOIRE:
 {
   "enterprises": [
     {
-      "nom_entreprise": "Raison sociale complète",
-      "site_web": "URL officielle",
-      "description_activite": "Description fabrication détaillée",
-      "produits_entreprise": ["Produit 1", "Produit 2"],
+      "nom_entreprise": "Nom complet de l'entreprise",
+      "site_web": "https://example.com",
+      "description_activite": "Description détaillée de l'activité de fabrication",
+      "produits_entreprise": ["Produit 1", "Produit 2", "Produit 3"],
       "potentiel_cgr": {
-        "produits_cibles_chez_le_prospect": ["Composant 1", "Composant 2"],
-        "produits_cgr_a_proposer": ["Ressorts fil", "Pièces découpées"],
-        "argumentaire_approche": "DÉTAILLÉ: 1) Nom complet 2) Usines [Ville, Pays] 3) Groupe 4) Produits fabriqués 5) Besoins composants 6) Volumes 7) Fournisseurs actuels - Min 200 mots"
+        "produits_cibles_chez_le_prospect": ["Composant A", "Composant B"],
+        "produits_cgr_a_proposer": ["Solution CGR 1", "Solution CGR 2"],
+        "argumentaire_approche": "Argumentaire commercial détaillé minimum 200 mots expliquant pourquoi CGR est pertinent pour ce prospect"
       },
-      "fournisseur_actuel_estimation": "Fournisseurs probables",
-      "sources": ["Source 1 URL", "Source 2 URL"],
-      "taille_entreprise": "PME/ETI/Grande",
-      "volume_pieces_estime": "Volume estimé",
-      "zone_geographique": "Zone précise avec pays"
+      "fournisseur_actuel_estimation": "Nom du fournisseur actuel probable",
+      "sources": ["https://source1.com", "https://source2.com"],
+      "taille_entreprise": "PME ou ETI ou Grande entreprise",
+      "volume_pieces_estime": "Estimation du volume (Faible/Moyen/Élevé/Très élevé)",
+      "zone_geographique": "Ville précise, Région, Pays"
     }
   ]
 }
 
-IMPORTANT: 
-- Viser 10 entreprises, minimum 5 entreprises qualifiées
-- Si moins de 5 trouvées, élargir géographiquement ou sectoriellement
-- Retourner UNIQUEMENT le JSON, rien d'autre
-- Pas de markdown, pas de texte explicatif`;
+RÈGLES STRICTES POUR LA VALIDITÉ JSON:
+1. N'utilise QUE des guillemets doubles (") - jamais de guillemets simples (')
+2. Échappe tous les guillemets dans les valeurs avec un backslash
+3. Pas de retours à la ligne dans les valeurs texte - remplace par des espaces
+4. Remplace les apostrophes françaises par des apostrophes simples normales
+5. Pas de virgule après le dernier élément d'un tableau ou objet
+6. Tous les nombres sans guillemets, tous les textes avec guillemets
+
+IMPORTANT:
+- Chaque entreprise DOIT avoir TOUTES les propriétés remplies
+- L'argumentaire_approche DOIT faire minimum 200 mots
+- Les tableaux ne doivent JAMAIS être vides
+- Si une info manque, mets "Non spécifié" mais GARDE la propriété
+
+MISSION: Identifier 5-10 FABRICANTS avec usines de production.
+
+PRODUITS CGR: Ressorts, pièces découpées, formage tubes, assemblages, mécatronique, injection plastique.
+
+EXCLUSIONS: Revendeurs, distributeurs, installateurs, fabricants de ressorts/pièces découpées (concurrents directs).`;
   }
 
   private buildEnterpriseSearchPrompt(data: EnterpriseSearchData): string {
@@ -208,128 +228,121 @@ IMPORTANT:
     
     const zoneGeo = allZones.length > 0 ? allZones.join(', ') : 'France et Europe';
     
-    const tailleEntreprise = data.tailleEntreprise || 'Toutes tailles';
-    
     const produitsCGRSpecifiques = data.produitsCGR && data.produitsCGR.length > 0 
       ? data.produitsCGR 
       : ['Ressorts fil', 'Pièces découpées', 'Formage tubes', 'Assemblages', 'Mécatronique', 'Injection plastique'];
-    
-    const motsCles = data.motsCles || 'composants mécaniques, précision';
-    const usinesCGR = data.usinesCGR && data.usinesCGR.length > 0 ? data.usinesCGR : ['Saint-Yorre', 'PMPC', 'Igé'];
 
     return `RECHERCHE: ${data.nombreResultats} entreprises FABRICANTES pour CGR International
 
-⚠️ RÉPONDS UNIQUEMENT AVEC UN JSON VALIDE - PAS DE TEXTE AVANT/APRÈS
+RÉPONDS UNIQUEMENT AVEC UN JSON VALIDE - PAS DE TEXTE AVANT/APRÈS - PAS DE MARKDOWN
 
-CRITÈRES RECHERCHE:
-
-Secteur: ${secteurPrincipal}
-${allSectors.length > 1 ? `Secteurs additionnels: ${allSectors.slice(1).join(', ')}` : ''}
-
-Zone: ${zoneGeo}
-Taille: ${tailleEntreprise}
-
-Produits CGR autorisés: ${produitsCGRSpecifiques.join(', ')}
-Mots-clés: ${motsCles}
-
-Exclusions: ${excludeClients.join(', ')}
+Secteur cible: ${secteurPrincipal}
+Zone géographique: ${zoneGeo}
+Taille entreprise: ${data.tailleEntreprise || 'Toutes tailles'}
+Produits CGR à proposer: ${produitsCGRSpecifiques.join(', ')}
+Clients à exclure: ${excludeClients.join(', ')}
 
 OBJECTIF: Trouver ${data.nombreResultats} FABRICANTS (minimum 5) avec:
 - Usines de production identifiées
-- Produits manufacturés propres
-- Besoins en composants CGR
+- Besoins potentiels en composants CGR
+- Informations complètes sur chaque entreprise
 
-STRATÉGIE:
-1. Recherche principale dans secteur et zone
-2. Si insuffisant, élargir géographiquement
-3. Si insuffisant, inclure secteurs connexes
+ATTENTION: Chaque objet entreprise doit être COMPLET avec toutes les propriétés remplies.
 
-VALIDATION ANTI-REVENDEUR:
-- Confirmer usines (adresses)
-- Confirmer fabrication (pas distribution)
-- Confirmer activités R&D
-
-RETOURNE UNIQUEMENT LE JSON SANS AUCUN TEXTE ADDITIONNEL:
-{
-  "enterprises": [...]
-}`;
+RETOURNE UNIQUEMENT LE JSON COMPLET commençant par { et finissant par }`;
   }
 
-  private parseEnterpriseResponse(response: any): { enterprises: Enterprise[], total: number, success: boolean, error?: string } {
+  private parseEnterpriseResponse(response: any): { 
+    enterprises: Enterprise[], 
+    total: number, 
+    success: boolean, 
+    error?: string 
+  } {
     try {
-      let content = response.choices[0]?.message?.content || '';
-      console.log('📄 Contenu reçu (premiers 500 chars):', content.substring(0, 500) + '...');
+      let content = response.choices?.[0]?.message?.content || '';
       
-      // Remove <think> tags
-      if (content.includes('<think>')) {
-        console.log('🧠 Detected <think> tags, removing...');
-        const thinkEndIndex = content.lastIndexOf('</think>');
-        if (thinkEndIndex !== -1) {
-          content = content.substring(thinkEndIndex + 8).trim();
-        }
+      if (!content) {
+        console.error('✗ Contenu vide reçu de Perplexity');
+        return this.createEmptyResponse('Aucun contenu reçu');
       }
       
-      // Remove markdown formatting
-      content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      const originalLength = content.length;
+      console.log(`📄 Contenu reçu: ${originalLength} caractères`);
       
-      // If content starts with markdown header or text, try to find JSON
-      if (content.startsWith('#') || !content.startsWith('{')) {
-        console.log('⚠️ Content does not start with JSON, searching for JSON block...');
-        
-        // Try to find JSON between { and }
-        const jsonMatch = content.match(/\{[\s\S]*"enterprises"[\s\S]*\]/);
-        if (jsonMatch) {
-          // Find the matching closing brace
-          let braceCount = 0;
-          let jsonEnd = -1;
-          for (let i = jsonMatch.index!; i < content.length; i++) {
-            if (content[i] === '{') braceCount++;
-            if (content[i] === '}') braceCount--;
-            if (braceCount === 0) {
-              jsonEnd = i + 1;
-              break;
-            }
-          }
-          
-          if (jsonEnd > 0) {
-            content = content.substring(jsonMatch.index!, jsonEnd);
-            console.log('✅ Extracted JSON block');
-          }
-        } else {
-          console.log('❌ No JSON structure found, attempting fallback');
-          return this.createFallbackResponse(content);
-        }
+      // Step 1: Remove markdown and wrapper tags
+      content = this.cleanMarkdownAndTags(content);
+      
+      // Step 2: Extract JSON boundaries
+      content = this.extractJSONContent(content);
+      
+      if (!content) {
+        console.error('✗ Impossible d\'extraire le JSON');
+        return this.extractPartialEnterprises(response.choices?.[0]?.message?.content || '');
       }
       
-      // Clean extracted content
-      content = this.cleanJsonString(content);
+      console.log(`📊 JSON extrait: ${content.length} caractères`);
+      console.log('🔍 Début:', content.substring(0, 100));
+      console.log('🔍 Fin:', content.slice(-100));
       
+      // Step 3: Validate and repair structure
+      const validation = this.validateJSONStructure(content);
+      if (!validation.valid) {
+        console.warn('⚠️ Structure JSON invalide:', validation.error);
+        content = this.repairJSONStructure(content);
+        console.log('🔧 JSON réparé');
+      } else {
+        console.log('✓ Structure JSON valide');
+      }
+      
+      // Step 4: Clean problematic characters
+      content = this.cleanJSONString(content);
+      
+      // Step 5: Parse
       let parsed: any;
-      
       try {
-        parsed = JSON.parse(content);
-        console.log('✅ Parsing direct réussi');
-      } catch (error) {
-        console.log('⚠️ Parsing direct échoué, tentative de réparation...');
+  parsed = JSON.parse(content);
+  
+  // NEW: Handle French key name
+  if (parsed.entreprises && !parsed.enterprises) {
+    parsed.enterprises = parsed.entreprises;
+    delete parsed.entreprises;
+  }
+  
+  console.log('✓ Parsing JSON réussi');
+      } catch (error: any) {
+        console.error('✗ Parsing échoué:', error.message);
+        const errorPos = this.extractErrorPosition(error.message);
+        if (errorPos) {
+          console.log(`📍 Erreur à la position ${errorPos}:`);
+          console.log(content.substring(Math.max(0, errorPos - 50), errorPos + 50));
+        }
         
-        content = this.repairJsonString(content);
+        // Advanced repair attempt
+        content = this.advancedJSONRepair(content);
+        
         try {
           parsed = JSON.parse(content);
-          console.log('✅ Parsing avec réparation réussi');
-        } catch (error2) {
-          console.log('⚠️ Parsing échoué, utilisation de fallback...');
-          return this.createFallbackResponse(response.choices[0]?.message?.content || '');
+          console.log('✓ Parsing réussi après réparation avancée');
+        } catch (error2: any) {
+          console.error('✗ Parsing échoué définitivement:', error2.message);
+          return this.extractPartialEnterprises(response.choices?.[0]?.message?.content || '');
         }
       }
       
-      if (!parsed || !Array.isArray(parsed.enterprises)) {
-        console.error('❌ Structure JSON invalide:', parsed);
-        return this.createFallbackResponse(response.choices[0]?.message?.content || '');
+      // Step 6: Validate and clean enterprises
+      if (!parsed || typeof parsed !== 'object') {
+        console.error('✗ Résultat parsé n\'est pas un objet');
+        return this.extractPartialEnterprises(content);
       }
-
-      const cleanedEnterprises = this.validateAndCleanEnterprises(parsed.enterprises);
       
-      console.log(`✅ ${cleanedEnterprises.length} entreprises parsées avec succès`);
+      if (!Array.isArray(parsed.enterprises)) {
+        console.error('✗ enterprises n\'est pas un tableau');
+        return this.extractPartialEnterprises(content);
+      }
+      
+      const cleanedEnterprises = this.validateAndCleanEnterprises(parsed.enterprises);
+      console.log(`✓ ${cleanedEnterprises.length} entreprises valides extraites`);
+      
       return {
         enterprises: cleanedEnterprises,
         total: cleanedEnterprises.length,
@@ -337,142 +350,268 @@ RETOURNE UNIQUEMENT LE JSON SANS AUCUN TEXTE ADDITIONNEL:
       };
       
     } catch (error: any) {
-      console.error('❌ Erreur parsing finale:', error.message);
-      return this.createFallbackResponse(response.choices[0]?.message?.content || '');
+      console.error('✗ Erreur parsing finale:', error.message);
+      return this.createEmptyResponse(error.message);
     }
   }
 
-  private cleanJsonString(str: string): string {
-    return str
-      .trim()
-      .replace(/^\s*\{/, '{')
-      .replace(/\}\s*$/, '}')
-      .replace(/[\u0000-\u001F\u007F-\u009F]/g, ''); // Remove control characters
+  private cleanMarkdownAndTags(content: string): string {
+    return content
+      .replace(/<think>[\s\S]*?<\/think>/g, '')
+      .replace(/```json\s*/g, '')
+      .replace(/```\s*/g, '')
+      .trim();
   }
 
-  private repairJsonString(jsonStr: string): string {
-    let repaired = jsonStr;
+  private extractJSONContent(content: string): string {
+    const firstBrace = content.indexOf('{');
+    const lastBrace = content.lastIndexOf('}');
     
-    repaired = repaired.replace(/,(\s*[}\]])/g, '$1');
-    repaired = repaired.replace(/}\s*{/g, '},{');
-    repaired = repaired.replace(/]\s*\[/g, '],[');
-    repaired = repaired.replace(/\s+/g, ' ');
+    if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) {
+      console.error('✗ Pas de JSON valide trouvé');
+      return '';
+    }
+    
+    if (firstBrace > 0) {
+      console.log(`🔧 Suppression de ${firstBrace} caractères avant le JSON`);
+    }
+    
+    if (lastBrace < content.length - 1) {
+      console.log(`🔧 Suppression de ${content.length - lastBrace - 1} caractères après le JSON`);
+    }
+    
+    return content.substring(firstBrace, lastBrace + 1);
+  }
+
+  private validateJSONStructure(str: string): {
+    valid: boolean;
+    error?: string;
+  } {
+    let openBraces = 0, closeBraces = 0;
+    let openBrackets = 0, closeBrackets = 0;
+    let inString = false;
+    let escaped = false;
+    
+    for (let i = 0; i < str.length; i++) {
+      const char = str[i];
+      
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      
+      if (inString) continue;
+      
+      if (char === '{') openBraces++;
+      if (char === '}') closeBraces++;
+      if (char === '[') openBrackets++;
+      if (char === ']') closeBrackets++;
+    }
+    
+    if (openBraces !== closeBraces) {
+      return { 
+        valid: false, 
+        error: `Accolades non appariées: ${openBraces} ouvertes, ${closeBraces} fermées` 
+      };
+    }
+    
+    if (openBrackets !== closeBrackets) {
+      return { 
+        valid: false, 
+        error: `Crochets non appariés: ${openBrackets} ouverts, ${closeBrackets} fermés` 
+      };
+    }
+    
+    if (inString) {
+      return { 
+        valid: false, 
+        error: 'Chaîne non fermée détectée' 
+      };
+    }
+    
+    return { valid: true };
+  }
+
+  private repairJSONStructure(str: string): string {
+    let repaired = str;
+    
+    const openBraces = (str.match(/{/g) || []).length;
+    const closeBraces = (str.match(/}/g) || []).length;
+    const openBrackets = (str.match(/\[/g) || []).length;
+    const closeBrackets = (str.match(/\]/g) || []).length;
+    
+    if (openBrackets > closeBrackets) {
+      const missing = openBrackets - closeBrackets;
+      console.log(`🔧 Ajout de ${missing} crochets fermants`);
+      repaired += ']'.repeat(missing);
+    }
+    
+    if (openBraces > closeBraces) {
+      const missing = openBraces - closeBraces;
+      console.log(`🔧 Ajout de ${missing} accolades fermantes`);
+      repaired += '}'.repeat(missing);
+    }
     
     return repaired;
   }
 
-  private createFallbackResponse(content: string): { enterprises: Enterprise[], total: number, success: boolean, error?: string } {
-    console.log('🔄 Creating fallback response from text content...');
+  private cleanJSONString(str: string): string {
+    return str
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+      .replace(/\r\n/g, ' ')
+      .replace(/\n/g, ' ')
+      .replace(/\t/g, ' ')
+      .replace(/[""]/g, '"')
+      .replace(/['']/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private advancedJSONRepair(str: string): string {
+    return str
+      .replace(/,(\s*[}\]])/g, '$1')
+      .replace(/}\s*{/g, '},{')
+      .replace(/]\s*\[/g, '],[')
+      .replace(/"(\w+)":\s*"([^"]*)"([^,}\]])/g, '"$1":"$2",$3')
+      .replace(/([}\]])(\s*)"(\w+)":/g, '$1,$2"$3":');
+  }
+
+  private extractErrorPosition(errorMsg: string): number | null {
+    const match = errorMsg.match(/position (\d+)/);
+    return match ? parseInt(match[1], 10) : null;
+  }
+
+  private extractPartialEnterprises(content: string): {
+    enterprises: Enterprise[];
+    total: number;
+    success: boolean;
+    error?: string;
+  } {
+    console.log('🔍 Tentative d\'extraction partielle...');
     
-    // Try manual parsing
-    const enterprises = this.manualParseEnterprises(content);
+    const enterprises: Enterprise[] = [];
+    const pattern = /{[^{}]*"nom_entreprise"\s*:\s*"([^"]+)"[^{}]*}/g;
+    const matches = content.matchAll(pattern);
+    
+    for (const match of matches) {
+      try {
+        const obj = match[0];
+        const nom = match[1];
+        
+        const siteMatch = obj.match(/"site_web"\s*:\s*"([^"]*)"/);
+        const descMatch = obj.match(/"description_activite"\s*:\s*"([^"]*)"/);
+        
+        enterprises.push({
+          nom_entreprise: nom.trim(),
+          site_web: siteMatch ? this.cleanWebsiteUrl(siteMatch[1]) : '',
+          description_activite: descMatch ? descMatch[1].trim() : 'Données extraites partiellement',
+          produits_entreprise: [],
+          potentiel_cgr: {
+            produits_cibles_chez_le_prospect: [],
+            produits_cgr_a_proposer: [],
+            argumentaire_approche: 'Données extraites partiellement - validation requise'
+          },
+          fournisseur_actuel_estimation: 'À identifier',
+          sources: [],
+          taille_entreprise: 'Non spécifié',
+          volume_pieces_estime: 'Non spécifié',
+          zone_geographique: 'Non spécifiée'
+        });
+        
+        if (enterprises.length >= 10) break;
+      } catch (err) {
+        continue;
+      }
+    }
     
     if (enterprises.length > 0) {
-      console.log(`✅ Fallback successful: ${enterprises.length} enterprises extracted`);
+      console.log(`✓ Extraction partielle: ${enterprises.length} entreprises`);
       return {
-        enterprises: enterprises,
+        enterprises,
         total: enterprises.length,
         success: true
       };
     }
     
-    console.log('❌ Fallback failed: No enterprises could be extracted');
-    return { 
-      enterprises: [], 
-      total: 0, 
-      success: false, 
-      error: 'Could not parse response - format not recognized. Try reducing search criteria or changing sector.'
+    console.error('✗ Échec extraction partielle');
+    return this.createEmptyResponse('Impossible d\'extraire les données');
+  }
+
+  private createEmptyResponse(error: string): {
+    enterprises: Enterprise[];
+    total: number;
+    success: boolean;
+    error: string;
+  } {
+    return {
+      enterprises: [],
+      total: 0,
+      success: false,
+      error
     };
   }
 
-  private manualParseEnterprises(content: string): Enterprise[] {
-    const enterprises: Enterprise[] = [];
-    
-    // Pattern 1: Look for company names in headers or lists
-    const companyPatterns = [
-      /(?:^|\n)(?:#{1,4}\s+)?(\d+[\.\)]\s+)?([A-ZÀÂÄÇÉÈÊËÏÎÔÙÛÜ][A-Za-zÀ-ÿ\s\-&'\.]{3,50}(?:SAS|SA|SARL|GmbH|Ltd|Inc|Corp)?)/gm,
-      /\*\*([A-ZÀÂÄÇÉÈÊËÏÎÔÙÛÜ][A-Za-zÀ-ÿ\s\-&'\.]{3,50}(?:SAS|SA|SARL|GmbH|Ltd)?)\*\*/g
-    ];
-    
-    const foundCompanies = new Set<string>();
-    
-    for (const pattern of companyPatterns) {
-      let match;
-      while ((match = pattern.exec(content)) !== null && foundCompanies.size < 10) {
-        const companyName = (match[2] || match[1]).trim();
-        
-        // Filter out generic headers
-        if (!companyName.match(/^(Introduction|Conclusion|Résumé|Contexte|Analyse|Étude|Liste|Entreprises?|Fabricants?)/i)) {
-          foundCompanies.add(companyName);
+  private validateAndCleanEnterprises(enterprises: any[]): Enterprise[] {
+    return enterprises
+      .filter(e => e && typeof e === 'object')
+      .map(enterprise => {
+        try {
+          const nom = String(enterprise.nom_entreprise || enterprise.name || '').trim();
+          if (!nom) return null;
+          
+          return {
+            nom_entreprise: nom,
+            site_web: this.cleanWebsiteUrl(enterprise.site_web || enterprise.website || ''),
+            description_activite: String(enterprise.description_activite || enterprise.description || 'Non spécifié').trim(),
+            produits_entreprise: Array.isArray(enterprise.produits_entreprise) 
+              ? enterprise.produits_entreprise.map((p: any) => String(p).trim()).filter(Boolean)
+              : [],
+            potentiel_cgr: {
+              produits_cibles_chez_le_prospect: Array.isArray(enterprise.potentiel_cgr?.produits_cibles_chez_le_prospect)
+                ? enterprise.potentiel_cgr.produits_cibles_chez_le_prospect.map((p: any) => String(p).trim()).filter(Boolean)
+                : [],
+              produits_cgr_a_proposer: Array.isArray(enterprise.potentiel_cgr?.produits_cgr_a_proposer)
+                ? enterprise.potentiel_cgr.produits_cgr_a_proposer.map((p: any) => String(p).trim()).filter(Boolean)
+                : [],
+              argumentaire_approche: String(enterprise.potentiel_cgr?.argumentaire_approche || 'Non spécifié').trim()
+            },
+            fournisseur_actuel_estimation: String(enterprise.fournisseur_actuel_estimation || 'Non spécifié').trim(),
+            sources: Array.isArray(enterprise.sources) 
+              ? enterprise.sources.map((s: any) => String(s).trim()).filter(Boolean)
+              : [],
+            taille_entreprise: String(enterprise.taille_entreprise || 'Non spécifié').trim(),
+            volume_pieces_estime: String(enterprise.volume_pieces_estime || 'Non spécifié').trim(),
+            zone_geographique: String(enterprise.zone_geographique || enterprise.address || 'Non spécifiée').trim()
+          };
+        } catch (error) {
+          console.error('✗ Erreur validation entreprise:', error);
+          return null;
         }
-      }
-    }
-    
-    console.log(`🔍 Found ${foundCompanies.size} potential company names`);
-    
-    // Convert to enterprise objects
-    Array.from(foundCompanies).forEach(companyName => {
-      enterprises.push({
-        nom_entreprise: companyName,
-        site_web: '',
-        description_activite: 'Fabricant identifié - détails à compléter',
-        produits_entreprise: [],
-        potentiel_cgr: {
-          produits_cibles_chez_le_prospect: [],
-          produits_cgr_a_proposer: [],
-          argumentaire_approche: 'Entreprise identifiée lors de la recherche - nécessite validation et analyse complémentaire'
-        },
-        fournisseur_actuel_estimation: 'À identifier',
-        sources: [],
-        taille_entreprise: 'Non spécifié',
-        volume_pieces_estime: 'Non spécifié',
-        zone_geographique: 'Non spécifié'
-      });
-    });
-    
-    return enterprises.slice(0, 10);
+      })
+      .filter((e): e is Enterprise => e !== null)
+      .slice(0, 15);
   }
 
-  private validateAndCleanEnterprises(enterprises: any[]): Enterprise[] {
-  return enterprises
-    .map(enterprise => {
-      // Mapping flexible
-      const nom = enterprise.nom_entreprise || enterprise.name || '';
-      const site = enterprise.site_web || enterprise.website || '';
-      const desc = enterprise.description_activite || enterprise.description || enterprise.manufactured_products || '';
-      const produits = enterprise.produits_entreprise 
-        || (enterprise.manufactured_products ? [enterprise.manufactured_products] : []);
-
-      return {
-        nom_entreprise: String(nom).trim(),
-        site_web: this.cleanWebsiteUrl(site),
-        description_activite: String(desc).trim(),
-        produits_entreprise: Array.isArray(produits) ? produits.map((p: any) => String(p).trim()) : [],
-        potentiel_cgr: {
-          produits_cibles_chez_le_prospect: enterprise.potentiel_cgr?.produits_cibles_chez_le_prospect || [],
-          produits_cgr_a_proposer: enterprise.potentiel_cgr?.produits_cgr_a_proposer || [],
-          argumentaire_approche: enterprise.potentiel_cgr?.argumentaire_approche || ''
-        },
-        fournisseur_actuel_estimation: enterprise.fournisseur_actuel_estimation || 'Non spécifié',
-        sources: enterprise.sources || [],
-        taille_entreprise: enterprise.taille_entreprise || 'Non spécifié',
-        volume_pieces_estime: enterprise.volume_pieces_estime || 'Non spécifié',
-        zone_geographique: enterprise.zone_geographique || enterprise.address || 'Non spécifié'
-      };
-    })
-    .filter(e => e.nom_entreprise !== '')
-    .slice(0, 15);
-}
   private cleanWebsiteUrl(url: string): string {
     if (!url || url.trim() === '') return '';
     
     let cleanedUrl = url.trim();
-    if (!cleanedUrl.startsWith('http://') && !cleanedUrl.startsWith('https://')) {
-      if (cleanedUrl.includes('.') && !cleanedUrl.includes(' ')) {
-        cleanedUrl = `https://${cleanedUrl}`;
-      } else {
-        return '';
-      }
+    cleanedUrl = cleanedUrl.replace(/^(https?:\/\/)?(www\.)?/, '');
+    
+    if (cleanedUrl.includes('.') && !cleanedUrl.includes(' ')) {
+      cleanedUrl = `https://${cleanedUrl}`;
+    } else {
+      return '';
     }
     
     try {
