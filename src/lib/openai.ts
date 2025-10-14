@@ -54,6 +54,7 @@ export class OpenAIBrainstormingClient {
           ],
           max_tokens: 4000,
           temperature: 0.4,
+           reasoning_effort: 'high',
           return_citations: true, // Get sources from Perplexity
           search_recency_filter: 'month' // Focus on recent market trends
         },

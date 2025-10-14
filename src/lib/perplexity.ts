@@ -82,6 +82,7 @@ export class PerplexityEnterpriseClient {
             ],
             max_tokens: 8000,
             temperature: 0.1,
+             reasoning_effort: 'high',
             search_recency_filter: 'month',
             search_domain_filter: [
               'linkedin.com', 

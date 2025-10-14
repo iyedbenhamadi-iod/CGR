@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+// ==================== TYPES ====================
+
 interface ContactInfo {
   nom: string;
   prenom: string;
@@ -32,14 +34,71 @@ interface ContactSearchResult {
   sources: string[];
   success: boolean;
   error?: string;
-  method?: 'apollo' | 'perplexity-fallback' | 'apollo+perplexity';
+  method?: 'apollo+perplexity+deep-research' | 'apollo+perplexity' | 'perplexity-fallback';
 }
+
+interface PerplexityAsyncResponse {
+  id?: string;
+  request_id?: string;
+  status?: string;
+  response?: {
+    choices?: Array<{
+      message: {
+        content: string;
+      };
+    }>;
+    search_results?: Array<{
+      title?: string;
+      url?: string;
+      date?: string;
+      published_date?: string;
+    }>;
+  };
+  error_message?: string;
+}
+
+// ==================== CLIENT ====================
 
 export class ContactSearchClient {
   private apolloApiKey: string;
   private perplexityApiKey: string;
   private apolloBaseUrl = 'https://api.apollo.io/api/v1';
   private perplexityBaseUrl = 'https://api.perplexity.ai';
+
+  // Mapping des rôles français vers recherche Apollo
+  private roleToTitleMapping: { [key: string]: string[] } = {
+    "Directeur des Achats": ["Director of Purchasing", "Head of Procurement", "Chief Procurement Officer", "Directeur Achats"],
+    "Responsable Achats": ["Purchasing Manager", "Procurement Manager", "Responsable Achats"],
+    "Acheteur": ["Buyer", "Purchaser", "Acheteur"],
+    "Acheteur Senior": ["Senior Buyer", "Senior Purchaser"],
+    "Acheteur Junior": ["Junior Buyer", "Assistant Buyer"],
+    "Acheteur Projet": ["Project Buyer", "Project Purchaser"],
+    "Acheteur Industriel": ["Industrial Buyer", "Manufacturing Buyer"],
+    "Acheteur International": ["International Buyer", "Global Buyer"],
+    "Buyer": ["Buyer", "Purchaser"],
+    "Senior Buyer": ["Senior Buyer"],
+    "Junior Buyer": ["Junior Buyer", "Assistant Buyer"],
+    "Commodity Buyer": ["Commodity Buyer", "Commodity Manager"],
+    "Acheteur Commodité": ["Commodity Buyer", "Commodity Manager"],
+    "Acheteur Famille": ["Category Buyer", "Family Buyer"],
+    "Category Buyer": ["Category Buyer", "Category Manager"],
+    "Strategic Buyer": ["Strategic Buyer", "Strategic Sourcing"],
+    "Operational Buyer": ["Operational Buyer", "Tactical Buyer"],
+    "Procurement Manager": ["Procurement Manager", "Purchasing Manager"],
+    "Procurement Specialist": ["Procurement Specialist", "Purchasing Specialist"],
+    "Purchasing Manager": ["Purchasing Manager", "Procurement Manager"],
+    "Head of Procurement": ["Head of Procurement", "Director of Procurement"],
+    "Chief Procurement Officer (CPO)": ["Chief Procurement Officer", "CPO"],
+    "Sourcing Manager": ["Sourcing Manager", "Strategic Sourcing Manager"],
+    "Sourcing Specialist": ["Sourcing Specialist", "Sourcing Analyst"],
+    "Responsable achat": ["Purchasing Manager", "Procurement Manager", "Head of Purchasing"],
+    "Responsable achat ressort": ["Spring Purchasing Manager", "Spring Buyer"],
+    "Acheteur projet": ["Project Buyer", "Project Purchaser"],
+    "Acheteur commodité": ["Commodity Buyer", "Commodity Manager"],
+    "Responsable découpe": ["Cutting Manager", "Cutting Department Head"],
+    "Responsable achat métal": ["Metal Purchasing Manager", "Metal Buyer"],
+    "Responsable Achats/Approvisionnement": ["Purchasing and Supply Manager", "Head of Procurement and Supply"]
+  };
 
   constructor() {
     this.apolloApiKey = process.env.APOLLO_API_KEY!;
@@ -53,68 +112,91 @@ export class ContactSearchClient {
     }
   }
 
+  // ==================== MÉTHODE PRINCIPALE ====================
+
   async searchContacts(request: ContactSearchRequest): Promise<ContactSearchResult> {
     console.log('🔍 Début recherche contacts pour:', request.nomEntreprise);
+    console.log('📍 Zone géographique:', request.zoneGeographique || 'Non spécifiée');
+    console.log('👥 Rôles recherchés:', request.contactRoles?.length || 0);
+    console.log('📊 Résultats demandés:', request.nombreResultats || 'illimité');
 
-    // 1️⃣ Recherche OBLIGATOIRE du contact standard via Perplexity avec retry renforcé
-    console.log('📞 [PRIORITAIRE] Recherche coordonnées standard avec Perplexity...');
-    const perplexityResult = await this.searchCompanyStandardWithRetry(request, 3);
+    const allContacts: ContactInfo[] = [];
+    const allSources: string[] = [];
 
-    // Validation stricte du contact standard
-    const standardContact = this.validateStandardContact(perplexityResult.contacts[0]);
+    // 1️⃣ STANDARD - Recherche coordonnées entreprise (Perplexity Sonar)
+    console.log('\n📞 [ÉTAPE 1/3] Recherche coordonnées standard...');
+    const standardResult = await this.searchCompanyStandardWithRetry(request, 3);
     
-    if (!standardContact) {
-      console.error('❌ ÉCHEC CRITIQUE : Aucun contact standard valide trouvé');
+    if (standardResult.success && standardResult.contacts.length > 0) {
+      const validStandard = this.validateStandardContact(standardResult.contacts[0]);
+      if (validStandard) {
+        allContacts.push(validStandard);
+        allSources.push(...standardResult.sources);
+        console.log('✅ Contact standard ajouté');
+      }
+    } else {
+      console.warn('⚠️ Échec récupération contact standard');
+    }
+
+    // 2️⃣ APOLLO - Recherche contacts spécifiques
+    console.log('\n🎯 [ÉTAPE 2/3] Recherche contacts Apollo (limite: 8)...');
+    
+    const apolloResult = await this.searchWithApollo({
+      ...request,
+      nombreResultats: 8
+    });
+    
+    if (apolloResult.success && apolloResult.contacts.length > 0) {
+      allContacts.push(...apolloResult.contacts);
+      allSources.push(...apolloResult.sources);
+      console.log(`✅ ${apolloResult.contacts.length} contacts Apollo ajoutés`);
+    } else {
+      console.log('ℹ️ Aucun contact Apollo trouvé');
+    }
+
+    // 3️⃣ DEEP RESEARCH - Recherche approfondie Perplexity
+    console.log('\n🔬 [ÉTAPE 3/3] Recherche Deep Research...');
+    const deepResult = await this.searchWithDeepResearch(request);
+    
+    if (deepResult.success && deepResult.contacts.length > 0) {
+      const newContacts = this.filterDuplicates(deepResult.contacts, allContacts);
+      allContacts.push(...newContacts);
+      allSources.push(...deepResult.sources);
+      console.log(`✅ ${newContacts.length} contacts Deep Research ajoutés (${deepResult.contacts.length - newContacts.length} doublons évités)`);
+    } else {
+      console.log('ℹ️ Aucun contact Deep Research trouvé');
+    }
+
+    const uniqueSources = [...new Set(allSources)];
+    const finalCount = allContacts.length;
+
+    console.log('\n📊 RÉSUMÉ FINAL:');
+    console.log(`   Total contacts: ${finalCount}`);
+    console.log(`   - Standard: ${standardResult.contacts.length}`);
+    console.log(`   - Apollo: ${apolloResult.contacts?.length || 0}`);
+    console.log(`   - Deep Research: ${deepResult.contacts?.length || 0}`);
+    console.log(`   Sources: ${uniqueSources.join(', ')}`);
+
+    if (finalCount === 0) {
       return {
         contacts: [],
-        sources: ['Perplexity (échec)'],
+        sources: uniqueSources,
         success: false,
-        error: 'Impossible de récupérer les coordonnées standard de l\'entreprise'
+        error: 'Aucun contact trouvé avec les 3 méthodes',
+        method: 'perplexity-fallback'
       };
     }
 
-    console.log('✅ Contact standard validé:', {
-      nom: standardContact.nom,
-      email: standardContact.email,
-      phone: standardContact.phone,
-      sources: standardContact.sources
-    });
-
-    // 2️⃣ Recherche Apollo (contacts spécifiques - optionnel)
-    const apolloResult = await this.searchWithApollo(request);
-
-    // Construction de la liste finale
-    let mergedContacts: ContactInfo[];
-    let method: 'apollo+perplexity' | 'perplexity-fallback';
-
-    if (apolloResult.contacts && apolloResult.contacts.length > 0) {
-      // Standard en premier + contacts Apollo
-      mergedContacts = [standardContact, ...apolloResult.contacts];
-      method = 'apollo+perplexity';
-      console.log(`✅ Résultat final: 1 standard + ${apolloResult.contacts.length} Apollo = ${mergedContacts.length} contacts`);
-    } else {
-      // Uniquement le contact standard
-      mergedContacts = [standardContact];
-      method = 'perplexity-fallback';
-      console.log('✅ Résultat final: 1 contact standard uniquement');
-    }
-
-    const allSources = [
-      ...standardContact.sources,
-      ...(apolloResult.sources || [])
-    ];
-
     return {
-      contacts: mergedContacts,
-      sources: [...new Set(allSources)],
+      contacts: allContacts,
+      sources: uniqueSources,
       success: true,
-      method
+      method: 'apollo+perplexity+deep-research'
     };
   }
 
-  /**
-   * Recherche robuste du contact standard avec retry et multiples stratégies
-   */
+  // ==================== 1️⃣ STANDARD CONTACT ====================
+
   private async searchCompanyStandardWithRetry(
     request: ContactSearchRequest, 
     maxRetries: number = 3
@@ -122,214 +204,605 @@ export class ContactSearchClient {
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`🔄 Tentative Perplexity ${attempt}/${maxRetries}`);
+        console.log(`🔄 Tentative Standard ${attempt}/${maxRetries}`);
         
-        // Stratégie 1: Recherche ciblée (tentatives 1-2)
-        if (attempt <= 2) {
-          const result = await this.searchCompanyStandardTargeted(request);
-          if (this.isValidStandardContact(result.contacts[0])) {
-            console.log(`✅ Succès tentative ${attempt} (ciblée)`);
-            return result;
-          }
+        const result = attempt <= 2 
+          ? await this.searchCompanyStandardTargeted(request)
+          : await this.searchCompanyStandardBroad(request);
+        
+        if (this.isValidStandardContact(result.contacts[0])) {
+          console.log(`✅ Succès tentative ${attempt}`);
+          return result;
         }
         
-        // Stratégie 2: Recherche élargie (tentative 3)
-        if (attempt === 3) {
-          const result = await this.searchCompanyStandardBroad(request);
-          if (this.isValidStandardContact(result.contacts[0])) {
-            console.log(`✅ Succès tentative ${attempt} (élargie)`);
-            return result;
-          }
-        }
-        
-        console.warn(`⚠️ Tentative ${attempt}/${maxRetries} - Contact incomplet`);
+        console.warn(`⚠️ Tentative ${attempt} - Contact incomplet`);
         
       } catch (error: any) {
-        console.error(`❌ Tentative ${attempt}/${maxRetries} échouée:`, error.message);
+        console.error(`❌ Tentative ${attempt} échouée:`, error.message);
       }
 
-      // Attente progressive entre les tentatives
       if (attempt < maxRetries) {
-        const delayMs = 1500 * attempt;
-        console.log(`⏳ Attente de ${delayMs}ms avant nouvelle tentative...`);
-        await this.delay(delayMs);
+        await this.delay(1500 * attempt);
       }
     }
 
-    // Échec complet après toutes les tentatives
-    console.error('❌ ÉCHEC TOTAL : Impossible de récupérer les coordonnées standard');
     return {
       contacts: [],
-      sources: ['Perplexity (échec)'],
+      sources: ['Perplexity Standard'],
       success: false,
-      error: 'Toutes les tentatives ont échoué'
+      error: 'Échec après toutes les tentatives'
     };
   }
 
-  /**
-   * Stratégie 1: Recherche ciblée et précise
-   */
   private async searchCompanyStandardTargeted(request: ContactSearchRequest): Promise<ContactSearchResult> {
-    const prompt = `
-Trouve les coordonnées OFFICIELLES de contact de l'entreprise "${request.nomEntreprise}"${request.zoneGeographique ? ` située en ${request.zoneGeographique}` : ''}.
+    const prompt = `Trouve les coordonnées OFFICIELLES de l'entreprise "${request.nomEntreprise}"${request.zoneGeographique ? ` en ${request.zoneGeographique}` : ''}.
 
-RECHERCHE OBLIGATOIRE :
-1. Email de contact général (contact@, info@, commercial@, accueil@)
-2. Numéro de téléphone du standard
-
-SOURCES À CONSULTER EN PRIORITÉ :
-- Site web officiel de l'entreprise
-- Pages "Contact" ou "Nous contacter"
-- Mentions légales
-- Annuaires professionnels officiels
-
-RETOURNE UNIQUEMENT CE JSON (aucun texte avant/après) :
+RETOURNE UNIQUEMENT CE JSON :
 {
   "contacts": [{
     "nom": "${request.nomEntreprise}",
     "prenom": "",
     "poste": "Standard",
-    "email": "email_officiel_trouvé",
-    "phone": "telephone_standard_au_format_+33XXXXXXXXX",
-    "sources": ["Site officiel", "Page contact"]
+    "email": "email_trouvé",
+    "phone": "+33XXXXXXXXX",
+    "sources": ["Site officiel"]
   }],
   "sources": ["Site officiel"]
-}
+}`;
 
-RÈGLES STRICTES :
-- Email ET téléphone sont OBLIGATOIRES
-- Format téléphone : +33XXXXXXXXX (sans espaces)
-- Si l'un des deux manque : chercher plus profondément
-- NE PAS inventer de coordonnées
-- Retourner UNIQUEMENT le JSON valide
-`;
-
-    return await this.executePerplexitySearch(prompt, request);
+    return await this.executePerplexitySearch(prompt, request, 'sonar');
   }
 
-  /**
-   * Stratégie 2: Recherche élargie avec plusieurs sources
-   */
   private async searchCompanyStandardBroad(request: ContactSearchRequest): Promise<ContactSearchResult> {
-    const prompt = `
-Recherche EXHAUSTIVE des coordonnées de "${request.nomEntreprise}"${request.zoneGeographique ? ` en ${request.zoneGeographique}` : ''}.
+    const prompt = `Recherche des coordonnées de "${request.nomEntreprise}"${request.zoneGeographique ? ` en ${request.zoneGeographique}` : ''}.
 
-MISSION CRITIQUE : Trouver email ET téléphone
-
-SOURCES À EXPLORER :
-1. Site web officiel (toutes les pages)
-2. Réseaux sociaux professionnels (LinkedIn, Facebook)
-3. Annuaires (Pages Jaunes, Kompass, etc.)
-4. Articles de presse mentionnant l'entreprise
-5. Bases de données publiques
-
-FORMAT DE RÉPONSE (JSON uniquement) :
+JSON uniquement :
 {
   "contacts": [{
     "nom": "${request.nomEntreprise}",
     "prenom": "",
-    "poste": "Contact entreprise",
-    "email": "adresse_email_trouvée",
-    "phone": "numéro_format_international",
-    "sources": ["sources_utilisées"]
+    "poste": "Contact",
+    "email": "adresse_trouvée",
+    "phone": "+33XXXXXXXXX",
+    "sources": ["sources"]
   }],
-  "sources": ["sources_principales"]
-}
+  "sources": ["sources"]
+}`;
 
-IMPORTANT :
-- Les deux coordonnées (email + téléphone) sont INDISPENSABLES
-- Vérifier plusieurs sources pour fiabilité
-- Préférer les coordonnées génériques officielles
-- Format téléphone international obligatoire
-`;
-
-    return await this.executePerplexitySearch(prompt, request);
+    return await this.executePerplexitySearch(prompt, request, 'sonar');
   }
 
-  /**
-   * Exécution de la recherche Perplexity avec parsing robuste
-   */
   private async executePerplexitySearch(
     prompt: string, 
-    request: ContactSearchRequest
+    request: ContactSearchRequest,
+    model: 'sonar' | 'sonar-deep-research'
   ): Promise<ContactSearchResult> {
     
     try {
       const response = await axios.post(
         `${this.perplexityBaseUrl}/chat/completions`,
         {
-          model: 'sonar',
+          model: model,
           messages: [
             { 
               role: 'system', 
-              content: 'Tu es un assistant de recherche spécialisé dans la recherche de coordonnées d\'entreprises. Tu retournes UNIQUEMENT du JSON valide RFC 8259, sans aucun texte additionnel, markdown ou commentaire.' 
+              content: 'Tu retournes UNIQUEMENT du JSON valide RFC 8259, sans texte additionnel.' 
             },
             { role: 'user', content: prompt }
           ],
           temperature: 0.1,
           max_tokens: 2000,
-          return_citations: true,
-          search_recency_filter: 'month'
+          return_citations: true
         },
         {
           headers: {
             'Authorization': `Bearer ${this.perplexityApiKey}`,
             'Content-Type': 'application/json'
           },
-          timeout: 60000 // 60 secondes pour recherche approfondie
+          timeout: 60000
         }
       );
 
       const content = response.data.choices[0]?.message?.content || '';
-      console.log('📄 Réponse Perplexity reçue:', content.substring(0, 200));
-      
-      // Nettoyage et parsing JSON
       const cleanedJson = this.cleanJsonResponse(content);
       const parsed = JSON.parse(cleanedJson);
 
-      // Formatage et validation du contact
       const contacts = (parsed.contacts || [])
         .map((contact: any) => this.formatStandardContact(contact, request))
         .filter((contact: ContactInfo | null) => contact !== null);
 
-      if (contacts.length === 0) {
-        throw new Error('Aucun contact valide après parsing');
-      }
-
-      console.log('✅ Contact standard parsé:', {
-        hasEmail: !!contacts[0].email,
-        hasPhone: !!contacts[0].phone
-      });
-
       return {
         contacts: contacts,
         sources: parsed.sources || ['Perplexity'],
-        success: true
+        success: contacts.length > 0
       };
 
     } catch (error: any) {
-      console.error('❌ Erreur executePerplexitySearch:', error.message);
+      console.error('❌ Erreur Perplexity:', error.message);
       throw error;
     }
   }
 
-  /**
-   * Formatage strict du contact standard
-   */
-  private formatStandardContact(
-    rawContact: any, 
-    request: ContactSearchRequest
-  ): ContactInfo | null {
+  // ==================== 2️⃣ APOLLO CONTACTS ====================
+
+  private async searchWithApollo(request: ContactSearchRequest): Promise<ContactSearchResult> {
+    console.log('🔍 Recherche via Apollo...');
     
+    try {
+      const searchParams = this.buildApolloSearchParams(request);
+      
+      const response = await axios.post(
+        `${this.apolloBaseUrl}/mixed_people/search`,
+        searchParams,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Api-Key': this.apolloApiKey
+          },
+          timeout: 30000
+        }
+      );
+      
+      console.log('✅ Réponse Apollo:', response.data.people?.length || 0, 'contacts');
+      
+      return this.parseApolloResponse(response.data, request);
+      
+    } catch (error: any) {
+      console.error('❌ Erreur Apollo:', error.message);
+      return {
+        contacts: [],
+        sources: ['Apollo.io'],
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  private buildApolloSearchParams(request: ContactSearchRequest): any {
+    const searchParams: any = {
+      page: 1,
+      per_page: request.nombreResultats || 8,
+      q_organization_name: request.nomEntreprise
+    };
+
+    if (request.zoneGeographique) {
+      searchParams.person_locations = [request.zoneGeographique];
+    }
+
+    if (request.contactRoles && request.contactRoles.length > 0) {
+      const titles = this.convertRolesToApolloTitles(request.contactRoles);
+      if (titles.length > 0) {
+        searchParams.person_titles = titles;
+      }
+    }
+
+    return searchParams;
+  }
+
+  private convertRolesToApolloTitles(roles: string[]): string[] {
+    const allTitles = new Set<string>();
+    
+    roles.forEach(role => {
+      const mappedTitles = this.roleToTitleMapping[role];
+      if (mappedTitles) {
+        mappedTitles.forEach(title => allTitles.add(title));
+      } else {
+        allTitles.add(role);
+      }
+    });
+
+    return Array.from(allTitles);
+  }
+
+  private parseApolloResponse(response: any, request: ContactSearchRequest): ContactSearchResult {
+    try {
+      if (!response.people || !Array.isArray(response.people)) {
+        return {
+          contacts: [],
+          sources: ['Apollo.io'],
+          success: true
+        };
+      }
+
+      const contacts: ContactInfo[] = response.people
+        .filter((person: any) => {
+          const orgName = person.organization?.name?.toLowerCase().trim() || '';
+          const targetCompany = request.nomEntreprise.toLowerCase().trim();
+          return orgName.includes(targetCompany) || targetCompany.includes(orgName);
+        })
+        .map((person: any) => {
+          let phone: string | undefined;
+          if (person.phone_numbers && person.phone_numbers.length > 0) {
+            const primaryPhone = person.phone_numbers.find((p: any) => p.type === 'work') || person.phone_numbers[0];
+            phone = this.formatInternationalPhone(primaryPhone.sanitized_number || primaryPhone.raw_number);
+          }
+
+          const contact: ContactInfo = {
+            nom: person.last_name || '',
+            prenom: person.first_name || '',
+            poste: person.title || '',
+            email: this.validateAndCleanEmail(person.email),
+            phone: phone,
+            linkedin_url: person.linkedin_url || undefined,
+            verified: true,
+            accroche_personnalisee: this.generatePersonalizedPitch(person, request.nomEntreprise),
+            sources: ['Apollo.io'],
+            relevance_score: 0.7
+          };
+
+          contact.accroche = contact.accroche_personnalisee;
+          contact.pitch = contact.accroche_personnalisee;
+
+          return contact;
+        })
+        .filter((contact: ContactInfo) => contact.nom && contact.prenom && contact.poste);
+
+      return {
+        contacts: contacts,
+        sources: ['Apollo.io'],
+        success: true
+      };
+
+    } catch (error: any) {
+      console.error('❌ Erreur parsing Apollo:', error);
+      return {
+        contacts: [],
+        sources: ['Apollo.io'],
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ==================== 3️⃣ DEEP RESEARCH ====================
+
+  private async searchWithDeepResearch(request: ContactSearchRequest): Promise<ContactSearchResult> {
+    console.log('🔬 Lancement Deep Research...');
+    
+    try {
+      const jobId = await this.startDeepResearchJob(request);
+      console.log(`📝 Job ID: ${jobId}`);
+      
+      const result = await this.pollDeepResearchJob(jobId, request);
+      
+      return result;
+      
+    } catch (error: any) {
+      console.error('❌ Erreur Deep Research:', error.message);
+      return {
+        contacts: [],
+        sources: ['Perplexity Deep Research'],
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  private async startDeepResearchJob(request: ContactSearchRequest): Promise<string> {
+    const rolesText = request.contactRoles && request.contactRoles.length > 0
+      ? request.contactRoles.join(', ')
+      : 'Responsable achats, Directeur achats, Acheteur, Buyer';
+
+    const prompt = `Trouve des contacts professionnels RÉELS chez "${request.nomEntreprise}"${request.zoneGeographique ? ` en ${request.zoneGeographique}` : ''}.
+
+RÔLES : ${rolesText}
+
+FORMAT JSON STRICT :
+{
+  "contacts": [
+    {
+      "nom": "Dupont",
+      "prenom": "Jean",
+      "poste": "Responsable Achats",
+      "email": "j.dupont@entreprise.com",
+      "phone": "+33612345678",
+      "linkedin_url": "https://linkedin.com/in/jean-dupont"
+    }
+  ]
+}`;
+
+    const payload = {
+      request: {
+        model: 'sonar-deep-research',
+        messages: [
+          { 
+            role: 'system', 
+            content: `Réponds UNIQUEMENT avec du JSON valide. Pas de texte, pas de balises <think>, pas de markdown. Juste le JSON brut qui commence par { et finit par }.` 
+          },
+          { role: 'user', content: prompt }
+        ],
+        search_mode: 'web',
+        reasoning_effort: 'low',
+        temperature: 0.0,
+        max_tokens: 6000
+      }
+    };
+
+    console.log('🚀 Configuration Deep Research: max_tokens=6000, reasoning_effort=low');
+
+    try {
+      const response = await axios.post(
+        `${this.perplexityBaseUrl}/async/chat/completions`,
+        payload,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.perplexityApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
+        }
+      );
+
+      const jobId = response.data.id || response.data.request_id;
+      
+      if (!jobId) {
+        throw new Error('Pas de job ID retourné par Perplexity');
+      }
+
+      return jobId;
+
+    } catch (error: any) {
+      if (error.response) {
+        console.error('Erreur API Perplexity:', error.response.status, error.response.data);
+        throw new Error(`Erreur API: ${error.response.status}`);
+      }
+      throw error;
+    }
+  }
+
+  private async pollDeepResearchJob(
+    jobId: string, 
+    request: ContactSearchRequest,
+    pollInterval: number = 10000,
+    timeout: number = 800000
+  ): Promise<ContactSearchResult> {
+    
+    const startTime = Date.now();
+    const url = `${this.perplexityBaseUrl}/async/chat/completions/${jobId}`;
+
+    console.log('⏳ Polling du job Deep Research (intervalle: 10s)...');
+    let pollCount = 0;
+
+    while (true) {
+      try {
+        pollCount++;
+        const response = await axios.get<PerplexityAsyncResponse>(url, {
+          headers: {
+            'Authorization': `Bearer ${this.perplexityApiKey}`
+          },
+          timeout: 30000
+        });
+
+        const data = response.data;
+        const status = (data.status || '').toUpperCase();
+
+        if (pollCount % 3 === 0 || status !== 'IN_PROGRESS') {
+          const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
+          console.log(`📊 Status: ${status} (${elapsedSeconds}s elapsed, poll #${pollCount})`);
+        }
+
+        if (status === 'COMPLETED' || data.response) {
+          console.log(`✅ Job terminé après ${pollCount} polls (${Math.round((Date.now() - startTime) / 1000)}s)`);
+          return this.parseDeepResearchResponse(data, request);
+        }
+
+        if (status === 'FAILED') {
+          throw new Error(`Job échoué: ${data.error_message || 'Erreur inconnue'}`);
+        }
+
+        if (Date.now() - startTime > timeout) {
+          throw new Error(`Timeout après ${timeout / 1000}s`);
+        }
+
+        await this.delay(pollInterval);
+
+      } catch (error: any) {
+        if (error.message.includes('Timeout') || error.message.includes('Job échoué')) {
+          throw error;
+        }
+        console.error('❌ Erreur polling:', error.message);
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * 🔥 PARSING ULTRA-ROBUSTE - VERSION FINALE
+   */
+  private parseDeepResearchResponse(
+    data: PerplexityAsyncResponse,
+    request: ContactSearchRequest
+  ): ContactSearchResult {
+    
+    try {
+      const resp = data.response || {};
+      let content = resp.choices?.[0]?.message?.content || '';
+
+      if (!content) {
+        console.warn('⚠️ Pas de contenu dans la réponse');
+        return this.createEmptyContactResult('Réponse vide');
+      }
+
+      console.log('📄 Contenu COMPLET:', content);
+
+      // 🔥 NETTOYAGE CRITIQUE
+      content = this.cleanDeepResearchContent(content);
+      
+      console.log('🧹 Après nettoyage COMPLET (500 chars):', content.substring(0, 500));
+
+      if (!content.includes('{')) {
+        console.warn('⚠️ Aucun JSON détecté');
+        return this.createEmptyContactResult('Pas de JSON dans la réponse');
+      }
+
+      const cleanedJson = this.cleanJsonResponse(content);
+      console.log('🔧 JSON final (500 chars):', cleanedJson.substring(0, 500));
+      
+      const parsed = JSON.parse(cleanedJson);
+
+      const searchResults = resp.search_results || [];
+      const sources = searchResults.map((s: any) => s.title || s.url || 'Source').slice(0, 5);
+
+      const contacts: ContactInfo[] = (parsed.contacts || [])
+        .map((contact: any) => this.formatDeepResearchContact(contact, request))
+        .filter((contact: ContactInfo | null) => contact !== null);
+
+      console.log(`✅ ${contacts.length} contacts Deep Research parsés`);
+
+      return {
+        contacts: contacts,
+        sources: sources.length > 0 ? sources : ['Perplexity Deep Research'],
+        success: contacts.length > 0
+      };
+
+    } catch (error: any) {
+      console.error('❌ Erreur parsing:', error.message);
+      return this.createEmptyContactResult(`Parsing error: ${error.message}`);
+    }
+  }
+
+  /**
+   * 🔥 NETTOYAGE COMPLET DE LA RÉPONSE DEEP RESEARCH
+   */
+  private cleanDeepResearchContent(content: string): string {
+    let cleaned = content;
+
+    // 1️⃣ Retirer TOUTES les balises <think>...</think> (même multi-lignes)
+    cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    
+    // 2️⃣ Retirer tout le texte AVANT le premier vrai { d'un objet JSON
+    // On cherche un { suivi d'un " (début de propriété JSON)
+    const firstRealJsonMatch = cleaned.match(/\{\s*"/);
+    if (firstRealJsonMatch) {
+      const startIndex = cleaned.indexOf(firstRealJsonMatch[0]);
+      cleaned = cleaned.substring(startIndex);
+    }
+    
+    // 3️⃣ Retirer le markdown
+    cleaned = cleaned.replace(/```json/gi, '').replace(/```/g, '');
+    
+    // 4️⃣ Retirer les titres markdown
+    cleaned = cleaned.replace(/^#+\s+.+$/gm, '');
+    
+    // 5️⃣ Nettoyer les espaces multiples
+    cleaned = cleaned.trim().replace(/\n\n+/g, '\n');
+
+    return cleaned;
+  }
+
+  private createEmptyContactResult(reason?: string): ContactSearchResult {
+    return {
+      contacts: [],
+      sources: ['Perplexity Deep Research'],
+      success: false,
+      error: reason || 'Aucun contact trouvé'
+    };
+  }
+
+  private cleanJsonResponse(content: string): string {
+    let cleaned = content.trim();
+    
+    cleaned = cleaned.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+    cleaned = cleaned.replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+    cleaned = cleaned.replace(/^#+\s+.+$/gm, '');
+    
+    const jsonMatches = cleaned.match(/\{[\s\S]*\}/);
+    
+    if (!jsonMatches) {
+      const arrayMatches = cleaned.match(/\[[\s\S]*\]/);
+      if (!arrayMatches) {
+        throw new Error('Pas de JSON trouvé');
+      }
+      cleaned = `{"contacts": ${arrayMatches[0]}}`;
+    } else {
+      cleaned = jsonMatches[0];
+    }
+    
+    cleaned = cleaned
+      .replace(/,(\s*[}\]])/g, '$1')
+      .replace(/:\s*'([^']*)'/g, ': "$1"')
+      .replace(/\n\s*\n/g, '\n');
+    
+    return cleaned;
+  }
+
+  private formatDeepResearchContact(rawContact: any, request: ContactSearchRequest): ContactInfo | null {
+    try {
+      if (!rawContact.nom || !rawContact.prenom) {
+        return null;
+      }
+
+      const email = this.validateAndCleanEmail(rawContact.email);
+      const phone = rawContact.phone ? this.validateAndCleanPhone(rawContact.phone) : undefined;
+      const linkedinUrl = this.validateLinkedInUrl(rawContact.linkedin_url);
+
+      return {
+        nom: rawContact.nom.trim(),
+        prenom: rawContact.prenom.trim(),
+        poste: rawContact.poste || 'Non spécifié',
+        email: email,
+        phone: phone,
+        linkedin_url: linkedinUrl,
+        verified: false,
+        sources: Array.isArray(rawContact.sources) ? rawContact.sources : ['Perplexity Deep Research'],
+        relevance_score: 0.6,
+        accroche_personnalisee: this.generatePersonalizedPitch(
+          { 
+            first_name: rawContact.prenom, 
+            title: rawContact.poste 
+          }, 
+          request.nomEntreprise
+        )
+      };
+
+    } catch (error: any) {
+      console.error('❌ Erreur formatage:', error.message);
+      return null;
+    }
+  }
+
+  private validateLinkedInUrl(url: string | null | undefined): string | undefined {
+    if (!url) return undefined;
+    
+    const cleanUrl = url.trim();
+    
+    if (!cleanUrl.includes('linkedin.com/in/')) {
+      return undefined;
+    }
+    
+    if (cleanUrl.startsWith('http')) {
+      return cleanUrl;
+    }
+    
+    return `https://www.${cleanUrl}`;
+  }
+
+  // ==================== HELPERS ====================
+
+  private filterDuplicates(newContacts: ContactInfo[], existingContacts: ContactInfo[]): ContactInfo[] {
+    return newContacts.filter(newContact => {
+      const isDuplicate = existingContacts.some(existing => {
+        const sameName = existing.nom.toLowerCase() === newContact.nom.toLowerCase() &&
+                        existing.prenom.toLowerCase() === newContact.prenom.toLowerCase();
+        
+        const sameEmail = existing.email && newContact.email &&
+                         existing.email.toLowerCase() === newContact.email.toLowerCase();
+        
+        const sameLinkedIn = existing.linkedin_url && newContact.linkedin_url &&
+                            existing.linkedin_url === newContact.linkedin_url;
+        
+        return sameName || sameEmail || sameLinkedIn;
+      });
+      
+      return !isDuplicate;
+    });
+  }
+
+  private formatStandardContact(rawContact: any, request: ContactSearchRequest): ContactInfo | null {
     const email = this.validateAndCleanEmail(rawContact.email);
     const phone = this.validateAndCleanPhone(rawContact.phone);
 
-    // Contact invalide si manque email OU téléphone
     if (!email || !phone) {
-      console.warn('⚠️ Contact incomplet:', { 
-        hasEmail: !!email, 
-        hasPhone: !!phone 
-      });
       return null;
     }
 
@@ -346,14 +819,8 @@ IMPORTANT :
     };
   }
 
-  /**
-   * Validation stricte du contact standard
-   */
   private validateStandardContact(contact: ContactInfo | undefined): ContactInfo | null {
-    if (!contact) {
-      console.error('❌ Contact undefined');
-      return null;
-    }
+    if (!contact) return null;
 
     const isValid = Boolean(
       contact.nom &&
@@ -364,22 +831,25 @@ IMPORTANT :
     );
 
     if (!isValid) {
-      console.error('❌ Contact standard invalide:', {
-        hasNom: !!contact.nom,
-        hasEmail: !!contact.email,
-        hasPhone: !!contact.phone,
-        emailValid: contact.email ? this.isValidEmail(contact.email) : false,
-        phoneValid: contact.phone ? this.isValidPhone(contact.phone) : false
-      });
+      console.error('❌ Contact standard invalide');
       return null;
     }
 
     return contact;
   }
 
-  /**
-   * Validation et nettoyage d'email
-   */
+  private isValidStandardContact(contact: ContactInfo | undefined): boolean {
+    if (!contact) return false;
+    
+    return Boolean(
+      contact.nom &&
+      contact.email &&
+      contact.phone &&
+      this.isValidEmail(contact.email) &&
+      this.isValidPhone(contact.phone)
+    );
+  }
+
   private validateAndCleanEmail(email: any): string | undefined {
     if (!email || typeof email !== 'string') return undefined;
     
@@ -391,11 +861,9 @@ IMPORTANT :
   }
 
   private isValidEmail(email: string): boolean {
-    // Format basique
     const emailRegex = /^[a-z0-9][a-z0-9._-]*@[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i;
     if (!emailRegex.test(email)) return false;
     
-    // Exclusions
     const invalidPatterns = [
       'example.com',
       'test.com',
@@ -410,9 +878,6 @@ IMPORTANT :
     return !invalidPatterns.some(pattern => email.includes(pattern));
   }
 
-  /**
-   * Validation et nettoyage de téléphone
-   */
   private validateAndCleanPhone(phone: any): string | undefined {
     if (!phone || typeof phone !== 'string') return undefined;
     
@@ -424,11 +889,9 @@ IMPORTANT :
   }
 
   private isValidPhone(phone: string): boolean {
-    // Doit être au format international avec au moins 10 chiffres
     const phoneRegex = /^\+\d{10,15}$/;
     if (!phoneRegex.test(phone)) return false;
     
-    // Exclusions
     const invalidPatterns = [
       'telephone_trouvé',
       'numéro_format',
@@ -440,10 +903,8 @@ IMPORTANT :
   }
 
   private formatInternationalPhone(phone: string): string {
-    // Nettoyer tous les caractères non-numériques sauf le +
     let cleaned = phone.replace(/[^\d+]/g, '');
     
-    // Convertir les formats français
     if (cleaned.startsWith('0') && cleaned.length === 10) {
       cleaned = '+33' + cleaned.substring(1);
     } else if (cleaned.startsWith('00')) {
@@ -455,168 +916,8 @@ IMPORTANT :
     return cleaned;
   }
 
-  /**
-   * Vérification de validité du contact standard
-   */
-  private isValidStandardContact(contact: ContactInfo | undefined): boolean {
-    if (!contact) return false;
-    
-    return Boolean(
-      contact.nom &&
-      contact.email &&
-      contact.phone &&
-      this.isValidEmail(contact.email) &&
-      this.isValidPhone(contact.phone)
-    );
-  }
-
-  /**
-   * Nettoyage robuste JSON
-   */
-  private cleanJsonResponse(content: string): string {
-    let cleaned = content.trim();
-    
-    // Supprimer markdown
-    cleaned = cleaned.replace(/```(?:json)?\s*/gi, '');
-    
-    // Extraire JSON
-    const firstBrace = cleaned.indexOf('{');
-    const lastBrace = cleaned.lastIndexOf('}');
-    
-    if (firstBrace === -1 || lastBrace === -1) {
-      throw new Error('Pas de JSON trouvé dans la réponse');
-    }
-    
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-    
-    // Corrections
-    cleaned = cleaned
-      .replace(/,(\s*[}\]])/g, '$1')
-      .replace(/:\s*'([^']*)'/g, ': "$1"');
-    
-    return cleaned;
-  }
-
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  /**
-   * Recherche Apollo (inchangée)
-   */
-  private async searchWithApollo(request: ContactSearchRequest): Promise<ContactSearchResult> {
-    console.log('🔍 Recherche via Apollo...');
-    
-    try {
-      const searchParams = this.buildApolloSearchParams(request);
-      
-      const response = await axios.post(
-        `${this.apolloBaseUrl}/mixed_people/search`,
-        searchParams,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache',
-            'X-Api-Key': this.apolloApiKey
-          },
-          timeout: 30000
-        }
-      );
-      
-      console.log('✅ Réponse Apollo reçue:', {
-        status: response.status,
-        totalContacts: response.data.people?.length || 0
-      });
-      
-      return this.parseApolloResponse(response.data, request);
-      
-    } catch (error: any) {
-      console.error('❌ Erreur Apollo API:', error.message);
-      return {
-        contacts: [],
-        sources: ['Apollo.io'],
-        success: false,
-        error: `Erreur Apollo: ${error.message}`
-      };
-    }
-  }
-
-  private buildApolloSearchParams(request: ContactSearchRequest): any {
-    const searchParams: any = {
-      page: 1,
-      per_page: request.nombreResultats || 25,
-      q_organization_name: request.nomEntreprise
-    };
-
-    if (request.zoneGeographique) {
-      searchParams.person_locations = [request.zoneGeographique];
-    }
-
-    return searchParams;
-  }
-
-  private parseApolloResponse(response: any, request: ContactSearchRequest): ContactSearchResult {
-    try {
-      if (!response.people || !Array.isArray(response.people)) {
-        return {
-          contacts: [],
-          sources: ['Apollo.io'],
-          success: true
-        };
-      }
-
-      const contacts: ContactInfo[] = response.people
-        .filter((person: any) => {
-          const organizationName = person.organization?.name?.toLowerCase().trim() || '';
-          const targetCompany = request.nomEntreprise.toLowerCase().trim();
-          return organizationName.includes(targetCompany) || targetCompany.includes(organizationName);
-        })
-        .map((person: any) => {
-          let phone: string | undefined;
-          if (person.phone_numbers && person.phone_numbers.length > 0) {
-            const primaryPhone = person.phone_numbers.find((p: any) => p.type === 'work') || person.phone_numbers[0];
-            phone = this.formatInternationalPhone(primaryPhone.sanitized_number || primaryPhone.raw_number);
-          }
-
-          const contact: ContactInfo = {
-            nom: person.last_name || '',
-            prenom: person.first_name || '',
-            poste: person.title || '',
-            email: this.validateAndCleanEmail(person.email),
-            phone: phone,
-            linkedin_url: person.linkedin_url ? person.linkedin_url : undefined,
-            verified: true,
-            accroche_personnalisee: this.generatePersonalizedPitch(person, request.nomEntreprise),
-            sources: ['Apollo.io'],
-            relevance_score: 0.7
-          };
-
-          contact.accroche = contact.accroche_personnalisee;
-          contact.pitch = contact.accroche_personnalisee;
-
-          return contact;
-        })
-        .filter((contact: ContactInfo) => contact.nom && contact.prenom && contact.poste);
-
-      const limitedContacts = contacts.slice(0, request.nombreResultats || 25);
-
-      console.log(`✅ ${limitedContacts.length} contacts Apollo retournés`);
-
-      return {
-        contacts: limitedContacts,
-        sources: ['Apollo.io'],
-        success: true
-      };
-
-    } catch (error: any) {
-      console.error('❌ Erreur parsing Apollo:', error);
-      return {
-        contacts: [],
-        sources: ['Apollo.io'],
-        success: false,
-        error: error.message
-      };
-    }
   }
 
   private generatePersonalizedPitch(person: any, entreprise: string): string {

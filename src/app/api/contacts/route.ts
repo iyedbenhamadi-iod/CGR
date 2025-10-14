@@ -85,10 +85,11 @@ interface ContactRequest {
   secteurActivite?: string;
   includeEmails?: boolean;
   includeLinkedIn?: boolean;
-  
-  contactRoles?: string[]; // New field for specific contact roles
-  siteWebEntreprise?: string; // Optional website field
-  nombreResultats?: number; // Number of results requested
+  contactRoles?: string[];
+  siteWebEntreprise?: string;
+  nombreResultats?: number;
+  location?: string; // ✅ AJOUTÉ : Support pour 'location' depuis /api/search
+  zoneGeographique?: string; // ✅ Format attendu par ContactSearchClient
 }
 
 export async function POST(request: NextRequest) {
@@ -105,6 +106,9 @@ export async function POST(request: NextRequest) {
     
     console.log('👤 Recherche contacts demandée:', JSON.stringify(requestData, null, 2));
     
+    // ✅ MAPPING: location → zoneGeographique
+    const zoneGeo = requestData.location || requestData.zoneGeographique;
+    
     // Enhanced cache key to include contact roles
     const cacheKeyParams = [
       `company-${requestData.nomEntreprise}`,
@@ -112,7 +116,8 @@ export async function POST(request: NextRequest) {
       `sector-${requestData.secteurActivite || 'all'}`,
       `roles-${requestData.contactRoles?.sort().join(',') || 'default'}`,
       `website-${requestData.siteWebEntreprise || 'none'}`,
-      `results-${requestData.nombreResultats || 10}`
+      `zone-${zoneGeo || 'none'}`, // ✅ AJOUTÉ : Inclure zone dans cache
+      `results-${requestData.nombreResultats || 50}`
     ];
     
     const cacheKey = generateCacheKey(
@@ -127,18 +132,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ...cachedResult, cached: true });
     }
     
+    // ✅ TRANSFORMATION: Créer la requête avec zoneGeographique
+    const searchRequest = {
+      nomEntreprise: requestData.nomEntreprise,
+      posteRecherche: requestData.posteRecherche,
+      secteurActivite: requestData.secteurActivite,
+      includeEmails: requestData.includeEmails,
+      includeLinkedIn: requestData.includeLinkedIn,
+      contactRoles: requestData.contactRoles,
+      siteWebEntreprise: requestData.siteWebEntreprise,
+      nombreResultats: requestData.nombreResultats,
+      zoneGeographique: zoneGeo // ✅ MAPPING APPLIQUÉ
+    };
+    
+    console.log('🌍 Zone géographique appliquée:', zoneGeo || 'Non spécifiée');
+    
     // Search contacts with timeout
     const contactClient = new ContactSearchClient();
     const contactResult = await withTimeout(
-      contactClient.searchContacts(requestData),
-      12000000 // 2 minutes for contact search
+      contactClient.searchContacts(searchRequest),
+      9000000 // 2 minutes for contact search
     );
     
     console.log('🔍 Résultat recherche contacts:', {
       success: contactResult.success,
       contactsFound: contactResult.contacts?.length || 0,
       error: contactResult.error,
-      contactRoles: requestData.contactRoles
+      contactRoles: requestData.contactRoles,
+      zoneGeographique: zoneGeo
     });
     
     if (!contactResult.success) {
@@ -150,7 +171,6 @@ export async function POST(request: NextRequest) {
     }
     
     // Transform the contacts to match frontend expectations with LinkedIn validation
-    // Note: Le filtrage par rôles est maintenant fait dans ContactSearchClient.parseContactResponse()
     const transformedContacts = contactResult.contacts?.map(contact => {
       // Valider l'URL LinkedIn avant de l'inclure
       const hasValidLinkedIn = contact.linkedin_url && contact.nom && contact.prenom ? 
@@ -178,17 +198,14 @@ export async function POST(request: NextRequest) {
         entreprise: requestData.nomEntreprise,
         secteur: requestData.secteurActivite || '',
         sources: contact.sources || [],
-        // Les informations de correspondance des rôles sont maintenant gérées dans contacts.ts
         matchedRoles: (contact as any).matchedRoles || [],
         roleScore: (contact as any).roleScore || 0,
         isRoleRelevant: (contact as any).isRoleRelevant !== undefined ? (contact as any).isRoleRelevant : true
       };
     }) || [];
     
-    // Limit results if requested
-    const limitedContacts = requestData.nombreResultats 
-      ? transformedContacts.slice(0, requestData.nombreResultats)
-      : transformedContacts;
+    // ✅ PAS DE LIMITE - Retourner tous les contacts
+    const limitedContacts = transformedContacts;
     
     // Debug: Log des statistiques LinkedIn et rôles
     const linkedinStats = {
@@ -232,7 +249,8 @@ export async function POST(request: NextRequest) {
         includeLinkedIn: requestData.includeLinkedIn,
         contactRoles: requestData.contactRoles,
         siteWebEntreprise: requestData.siteWebEntreprise,
-        nombreResultats: requestData.nombreResultats
+        nombreResultats: requestData.nombreResultats,
+        zoneGeographique: zoneGeo // ✅ AJOUTÉ : Inclure dans searchCriteria
       },
       linkedinStats,
       roleStats,
@@ -241,7 +259,8 @@ export async function POST(request: NextRequest) {
         searchComplete: true,
         rolesUsed: requestData.contactRoles || [],
         originalResultsCount: transformedContacts.length,
-        limitApplied: !!requestData.nombreResultats,
+        limitApplied: false, // ✅ CHANGÉ : Plus de limite
+        zoneGeographiqueApplied: zoneGeo || 'Non spécifiée',
         transformedFields: limitedContacts.map(contact => ({
           nom: !!contact.nom,
           prenom: !!contact.prenom,
@@ -264,7 +283,8 @@ export async function POST(request: NextRequest) {
       contactsCount: response.contacts.length,
       totalFound: response.totalFound,
       linkedinValidation: linkedinStats,
-      roleMatching: roleStats
+      roleMatching: roleStats,
+      zoneGeographique: zoneGeo
     });
     
     // Save to cache
@@ -306,8 +326,9 @@ export async function GET(request: NextRequest) {
     const companyName = searchParams.get('company');
     const position = searchParams.get('position');
     const sector = searchParams.get('sector');
-    const roles = searchParams.get('roles'); // New parameter for roles
+    const roles = searchParams.get('roles');
     const website = searchParams.get('website');
+    const zone = searchParams.get('zone'); // ✅ AJOUTÉ
     const results = searchParams.get('results');
     
     if (!companyName) {
@@ -324,6 +345,7 @@ export async function GET(request: NextRequest) {
       `sector-${sector || 'all'}`,
       `roles-${roles || 'default'}`,
       `website-${website || 'none'}`,
+      `zone-${zone || 'none'}`, // ✅ AJOUTÉ
       `results-${results || '10'}`
     ];
     

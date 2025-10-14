@@ -3,7 +3,7 @@ import type React from "react"
 export interface FormData {
   typeRecherche: string
   secteursActivite: string[]
-  zoneGeographique: string[]
+  zoneGeographique?: string
   secteurActiviteLibre: string // Nouveau champ libre
   zoneGeographiqueLibre: string // Nouveau champ libre
   tailleEntreprise: string
@@ -18,6 +18,7 @@ export interface FormData {
   nombreResultats: number
   contactRoles: string[] 
   location?: string
+  
     regionGeographique?: string // Add this line
   showAutresProduits?: boolean // Nouveau champ pour afficher/masquer le champ libre
   regionPersonnalisee?: string
@@ -90,8 +91,5 @@ export const CONTACT_ROLES = [
   "Responsable découpe",
   "Acheteur commodité",
   "Acheteur projet",
-  "Directeur Technique/R&D/Innovation",
   "Responsable Achats/Approvisionnement",
-  "Directeur Production/Qualité",
-  "Direction Générale"
-]
+  "Directeur Production/Qualité"]
