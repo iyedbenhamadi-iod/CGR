@@ -3,7 +3,7 @@ import type React from "react"
 export interface FormData {
   typeRecherche: string
   secteursActivite: string[]
-  zoneGeographique?: string
+  zoneGeographique: string[]
   secteurActiviteLibre: string // Nouveau champ libre
   zoneGeographiqueLibre: string // Nouveau champ libre
   tailleEntreprise: string
