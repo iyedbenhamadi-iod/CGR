@@ -154,40 +154,64 @@ function getUserId(request: NextRequest): string {
   return fallbackId;
 }
 
+// app/api/search/route.ts
+// ⚠️ MODIFIEZ LA FONCTION makeApiCall
+
 async function makeApiCall(url: string, body: any, retries: number = 2): Promise<Response> {
   for (let attempt = 1; attempt <= retries + 1; attempt++) {
-    try {
-      console.log(`📡 API call attempt ${attempt}/${retries + 1}: ${url}`);
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+    try {
+      console.log(`📡 API call attempt ${attempt}/${retries + 1}: ${url}`);
+      
+      // ✅ AJOUT : AbortController pour gérer le timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 540000); // 9 min (540s)
+      
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal // ✅ CRITIQUE : Ajouter le signal
+        });
 
-      if (response.ok) return response;
-      if (response.status >= 400 && response.status < 500) return response;
+        clearTimeout(timeoutId); // ✅ Nettoyer le timeout si succès
+        
+        if (response.ok) return response;
+        if (response.status >= 400 && response.status < 500) return response;
 
-      if (attempt <= retries) {
-        const delay = Math.pow(2, attempt) * 1000;
-        console.log(`⏳ Retrying in ${delay}ms... (attempt ${attempt}/${retries + 1})`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-      
-      return response;
-    } catch (error) {
-      console.error(`❌ API call attempt ${attempt} failed:`, error);
-      if (attempt <= retries) {
-        const delay = Math.pow(2, attempt) * 1000;
-        console.log(`⏳ Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      } else {
-        throw error;
-      }
-    }
-  }
-  throw new Error('All retry attempts failed');
+        if (attempt <= retries) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.log(`⏳ Retrying in ${delay}ms... (attempt ${attempt}/${retries + 1})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        
+        return response;
+        
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        
+        // ✅ Différencier timeout vs erreur réseau
+        if (fetchError.name === 'AbortError') {
+          throw new Error(`Request timeout after 9 minutes for ${url}`);
+        }
+        throw fetchError;
+      }
+      
+    } catch (error: any) {
+      console.error(`❌ API call attempt ${attempt} failed:`, error.message);
+      
+      if (attempt <= retries) {
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`⏳ Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error('All retry attempts failed');
 }
+
 
 function getBaseUrl(request: NextRequest): string {
   const url = new URL(request.url);

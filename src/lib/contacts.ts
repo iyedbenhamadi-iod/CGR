@@ -57,6 +57,63 @@ interface PerplexityAsyncResponse {
   error_message?: string;
 }
 
+// ==================== JSON SCHEMAS ====================
+
+const STANDARD_CONTACT_SCHEMA = {
+  type: "object",
+  properties: {
+    contacts: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          nom: { type: "string" },
+          prenom: { type: "string" },
+          poste: { type: "string" },
+          email: { type: "string" },
+          phone: { type: "string" },
+          sources: {
+            type: "array",
+            items: { type: "string" }
+          }
+        },
+        required: ["nom", "poste", "email", "phone", "sources"],
+        additionalProperties: false
+      }
+    },
+    sources: {
+      type: "array",
+      items: { type: "string" }
+    }
+  },
+  required: ["contacts", "sources"],
+  additionalProperties: false
+};
+
+const DEEP_RESEARCH_CONTACT_SCHEMA = {
+  type: "object",
+  properties: {
+    contacts: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          nom: { type: "string" },
+          prenom: { type: "string" },
+          poste: { type: "string" },
+          email: { type: "string" },
+          phone: { type: "string" },
+          linkedin_url: { type: "string" }
+        },
+        required: ["nom", "prenom", "poste"],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ["contacts"],
+  additionalProperties: false
+};
+
 // ==================== CLIENT ====================
 
 export class ContactSearchClient {
@@ -123,7 +180,7 @@ export class ContactSearchClient {
     const allContacts: ContactInfo[] = [];
     const allSources: string[] = [];
 
-    // 1️⃣ STANDARD - Recherche coordonnées entreprise (Perplexity Sonar)
+    // 1️⃣ STANDARD - Recherche coordonnées entreprise (Perplexity Sonar avec JSON Schema)
     console.log('\n📞 [ÉTAPE 1/3] Recherche coordonnées standard...');
     const standardResult = await this.searchCompanyStandardWithRetry(request, 3);
     
@@ -159,10 +216,11 @@ export class ContactSearchClient {
     const deepResult = await this.searchWithDeepResearch(request);
     
     if (deepResult.success && deepResult.contacts.length > 0) {
-      const newContacts = this.filterDuplicates(deepResult.contacts, allContacts);
-      allContacts.push(...newContacts);
+      // Ajouter TOUS les contacts Deep Research directement
+      allContacts.push(...deepResult.contacts);
       allSources.push(...deepResult.sources);
-      console.log(`✅ ${newContacts.length} contacts Deep Research ajoutés (${deepResult.contacts.length - newContacts.length} doublons évités)`);
+      
+      console.log(`✅ ${deepResult.contacts.length} contacts Deep Research ajoutés`);
     } else {
       console.log('ℹ️ Aucun contact Deep Research trouvé');
     }
@@ -237,63 +295,61 @@ export class ContactSearchClient {
   private async searchCompanyStandardTargeted(request: ContactSearchRequest): Promise<ContactSearchResult> {
     const prompt = `Trouve les coordonnées OFFICIELLES de l'entreprise "${request.nomEntreprise}"${request.zoneGeographique ? ` en ${request.zoneGeographique}` : ''}.
 
-RETOURNE UNIQUEMENT CE JSON :
-{
-  "contacts": [{
-    "nom": "${request.nomEntreprise}",
-    "prenom": "",
-    "poste": "Standard",
-    "email": "email_trouvé",
-    "phone": "+33XXXXXXXXX",
-    "sources": ["Site officiel"]
-  }],
-  "sources": ["Site officiel"]
-}`;
+Tu dois retourner un JSON avec:
+- contacts: tableau contenant UN contact avec nom (nom entreprise), prenom (vide), poste ("Standard"), email (email trouvé), phone (numéro international), sources (liste des sources)
+- sources: liste des sources utilisées
 
-    return await this.executePerplexitySearch(prompt, request, 'sonar');
+IMPORTANT:
+- Le email doit être un vrai email trouvé (pas de placeholder)
+- Le phone doit être au format international (+33...)
+- Cherche sur le site officiel de l'entreprise`;
+
+    return await this.executePerplexitySearch(prompt, request, 'sonar', STANDARD_CONTACT_SCHEMA);
   }
 
   private async searchCompanyStandardBroad(request: ContactSearchRequest): Promise<ContactSearchResult> {
-    const prompt = `Recherche des coordonnées de "${request.nomEntreprise}"${request.zoneGeographique ? ` en ${request.zoneGeographique}` : ''}.
+    const prompt = `Recherche des coordonnées de contact de "${request.nomEntreprise}"${request.zoneGeographique ? ` en ${request.zoneGeographique}` : ''}.
 
-JSON uniquement :
-{
-  "contacts": [{
-    "nom": "${request.nomEntreprise}",
-    "prenom": "",
-    "poste": "Contact",
-    "email": "adresse_trouvée",
-    "phone": "+33XXXXXXXXX",
-    "sources": ["sources"]
-  }],
-  "sources": ["sources"]
-}`;
+Retourne un JSON avec les coordonnées trouvées (email et téléphone au format international).`;
 
-    return await this.executePerplexitySearch(prompt, request, 'sonar');
+    return await this.executePerplexitySearch(prompt, request, 'sonar', STANDARD_CONTACT_SCHEMA);
   }
 
   private async executePerplexitySearch(
     prompt: string, 
     request: ContactSearchRequest,
-    model: 'sonar' | 'sonar-deep-research'
+    model: 'sonar' | 'sonar-deep-research',
+    jsonSchema?: any
   ): Promise<ContactSearchResult> {
     
     try {
+      const payload: any = {
+        model: model,
+        messages: [
+          { 
+            role: 'system', 
+            content: 'Tu es un assistant qui retourne UNIQUEMENT du JSON valide selon le schéma fourni.' 
+          },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 2000,
+        return_citations: true
+      };
+
+      // Ajouter JSON Schema si fourni
+      if (jsonSchema) {
+        payload.response_format = {
+          type: "json_schema",
+          json_schema: {
+            schema: jsonSchema
+          }
+        };
+      }
+
       const response = await axios.post(
         `${this.perplexityBaseUrl}/chat/completions`,
-        {
-          model: model,
-          messages: [
-            { 
-              role: 'system', 
-              content: 'Tu retournes UNIQUEMENT du JSON valide RFC 8259, sans texte additionnel.' 
-            },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.1,
-          max_tokens: 2000,
-          return_citations: true
-        },
+        payload,
         {
           headers: {
             'Authorization': `Bearer ${this.perplexityApiKey}`,
@@ -304,6 +360,9 @@ JSON uniquement :
       );
 
       const content = response.data.choices[0]?.message?.content || '';
+      
+      // Avec JSON Schema, le contenu devrait déjà être du JSON valide
+      // Mais on nettoie quand même au cas où
       const cleanedJson = this.cleanJsonResponse(content);
       const parsed = JSON.parse(cleanedJson);
 
@@ -485,21 +544,16 @@ JSON uniquement :
 
     const prompt = `Trouve des contacts professionnels RÉELS chez "${request.nomEntreprise}"${request.zoneGeographique ? ` en ${request.zoneGeographique}` : ''}.
 
-RÔLES : ${rolesText}
+RÔLES RECHERCHÉS: ${rolesText}
 
-FORMAT JSON STRICT :
-{
-  "contacts": [
-    {
-      "nom": "Dupont",
-      "prenom": "Jean",
-      "poste": "Responsable Achats",
-      "email": "j.dupont@entreprise.com",
-      "phone": "+33612345678",
-      "linkedin_url": "https://linkedin.com/in/jean-dupont"
-    }
-  ]
-}`;
+Tu dois retourner un JSON avec:
+- contacts: tableau d'objets avec nom, prenom, poste, email (optionnel), phone (optionnel), linkedin_url (optionnel)
+
+IMPORTANT:
+- Cherche des personnes RÉELLES avec leurs vrais noms
+- Les emails et téléphones sont optionnels
+- Le LinkedIn est optionnel
+- Focus sur la qualité des informations`;
 
     const payload = {
       request: {
@@ -507,18 +561,21 @@ FORMAT JSON STRICT :
         messages: [
           { 
             role: 'system', 
-            content: `Réponds UNIQUEMENT avec du JSON valide. Pas de texte, pas de balises <think>, pas de markdown. Juste le JSON brut qui commence par { et finit par }.` 
+            content: 'Tu es un assistant de recherche professionnel. Tu retournes UNIQUEMENT du JSON valide selon le schéma fourni.' 
           },
           { role: 'user', content: prompt }
         ],
         search_mode: 'web',
-        reasoning_effort: 'low',
+        reasoning_effort: 'high',
         temperature: 0.0,
-        max_tokens: 6000
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            schema: DEEP_RESEARCH_CONTACT_SCHEMA
+          }
+        }
       }
     };
-
-    console.log('🚀 Configuration Deep Research: max_tokens=6000, reasoning_effort=low');
 
     try {
       const response = await axios.post(
@@ -554,7 +611,7 @@ FORMAT JSON STRICT :
     jobId: string, 
     request: ContactSearchRequest,
     pollInterval: number = 10000,
-    timeout: number = 800000
+    timeout: number = 600000
   ): Promise<ContactSearchResult> {
     
     const startTime = Date.now();
@@ -607,7 +664,7 @@ FORMAT JSON STRICT :
   }
 
   /**
-   * 🔥 PARSING ULTRA-ROBUSTE - VERSION FINALE
+   * 🔥 PARSING AVEC JSON SCHEMA - Parsing simplifié car structure garantie
    */
   private parseDeepResearchResponse(
     data: PerplexityAsyncResponse,
@@ -623,20 +680,16 @@ FORMAT JSON STRICT :
         return this.createEmptyContactResult('Réponse vide');
       }
 
-      console.log('📄 Contenu COMPLET:', content);
+      console.log('📄 Contenu brut (premiers 500 chars):', content.substring(0, 500));
 
-      // 🔥 NETTOYAGE CRITIQUE
+      // Nettoyer les balises <think> pour les modèles reasoning
       content = this.cleanDeepResearchContent(content);
       
-      console.log('🧹 Après nettoyage COMPLET (500 chars):', content.substring(0, 500));
+      console.log('🧹 Après nettoyage (premiers 500 chars):', content.substring(0, 500));
 
-      if (!content.includes('{')) {
-        console.warn('⚠️ Aucun JSON détecté');
-        return this.createEmptyContactResult('Pas de JSON dans la réponse');
-      }
-
+      // Avec JSON Schema, le parsing devrait être plus simple
       const cleanedJson = this.cleanJsonResponse(content);
-      console.log('🔧 JSON final (500 chars):', cleanedJson.substring(0, 500));
+      console.log('🔧 JSON final (premiers 500 chars):', cleanedJson.substring(0, 500));
       
       const parsed = JSON.parse(cleanedJson);
 
@@ -671,7 +724,6 @@ FORMAT JSON STRICT :
     cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
     
     // 2️⃣ Retirer tout le texte AVANT le premier vrai { d'un objet JSON
-    // On cherche un { suivi d'un " (début de propriété JSON)
     const firstRealJsonMatch = cleaned.match(/\{\s*"/);
     if (firstRealJsonMatch) {
       const startIndex = cleaned.indexOf(firstRealJsonMatch[0]);
@@ -702,10 +754,12 @@ FORMAT JSON STRICT :
   private cleanJsonResponse(content: string): string {
     let cleaned = content.trim();
     
+    // Retirer les blocs de code markdown
     cleaned = cleaned.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
     cleaned = cleaned.replace(/^```\s*/i, '').replace(/\s*```$/i, '');
     cleaned = cleaned.replace(/^#+\s+.+$/gm, '');
     
+    // Extraire le JSON
     const jsonMatches = cleaned.match(/\{[\s\S]*\}/);
     
     if (!jsonMatches) {
@@ -718,6 +772,7 @@ FORMAT JSON STRICT :
       cleaned = jsonMatches[0];
     }
     
+    // Nettoyer les virgules trailing et guillemets simples
     cleaned = cleaned
       .replace(/,(\s*[}\]])/g, '$1')
       .replace(/:\s*'([^']*)'/g, ': "$1"')
@@ -766,15 +821,26 @@ FORMAT JSON STRICT :
     
     const cleanUrl = url.trim();
     
+    // Vérifier que c'est une URL LinkedIn valide
     if (!cleanUrl.includes('linkedin.com/in/')) {
       return undefined;
     }
     
-    if (cleanUrl.startsWith('http')) {
-      return cleanUrl;
+    // Normaliser l'URL
+    let normalizedUrl = cleanUrl;
+    
+    // Ajouter https:// si manquant
+    if (normalizedUrl.startsWith('http://')) {
+      normalizedUrl = normalizedUrl.replace('http://', 'https://');
+    } else if (!normalizedUrl.startsWith('https://')) {
+      normalizedUrl = `https://${normalizedUrl}`;
     }
     
-    return `https://www.${cleanUrl}`;
+    // ✅ PAS de validation sur le nom de la personne
+    // Les usernames LinkedIn peuvent être différents du nom réel
+    // Exemples: "john-smith-12345", "jsmith", "igvillalba", etc.
+    
+    return normalizedUrl;
   }
 
   // ==================== HELPERS ====================
