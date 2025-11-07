@@ -80,8 +80,8 @@ export default function Dashboard() {
     setResults(null)
     setError("")
     setPrefillData(undefined)
-    setLoadingStage("")
-    setLoadingProgress(0)
+    stopLoading()
+
   }
 
   const handleSearchFromBrainstorming = (marketName: string, cgrProducts: string[]) => {
