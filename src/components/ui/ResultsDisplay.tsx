@@ -1,4 +1,5 @@
 "use client"
+import React from "react"
 import {
   Building2,
   Users,
@@ -170,23 +171,56 @@ function getHostname(url: string): string {
 }
 
 function ContactCard({ contact }: { contact: Contact }) {
-  const emailLocked = !contact.email || contact.email.includes("email_not_unlocked")
+  const [isRevealing, setIsRevealing] = React.useState(false);
+  const [revealedData, setRevealedData] = React.useState<{
+    phone?: string;
+    email?: string;
+    phoneStatus?: string;
+  } | null>(null);
+  const [revealError, setRevealError] = React.useState<string | null>(null);
 
-  // Debug: Log contact data including email and phone
-  console.log('📋 Contact card data:', {
-    name: `${contact.prenom} ${contact.nom}`,
-    poste: contact.poste,
-    linkedin_headline: contact.linkedin_headline,
-    has_headline: !!contact.linkedin_headline,
-    email: contact.email,
-    has_email: !!contact.email,
-    phone: contact.phone,
-    has_phone: !!contact.phone,
-    emailLocked: !contact.email || contact.email.includes("email_not_unlocked")
-  });
+  const hasContactInfo = contact.email && !contact.email.includes("email_not_unlocked") && contact.phone;
+  const needsReveal = !hasContactInfo;
+
+  const handleReveal = async () => {
+    setIsRevealing(true);
+    setRevealError(null);
+
+    try {
+      const response = await fetch('/api/reveal-contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: contact.prenom,
+          lastName: contact.nom,
+          linkedinUrl: contact.linkedin_url,
+          organization: contact.entreprise
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setRevealedData({
+          phone: data.phone,
+          email: data.email,
+          phoneStatus: data.phoneStatus
+        });
+      } else {
+        setRevealError(data.error || 'Failed to reveal contact');
+      }
+    } catch (error) {
+      setRevealError('Network error. Please try again.');
+    } finally {
+      setIsRevealing(false);
+    }
+  };
+
+  const displayEmail = revealedData?.email || (!contact.email?.includes("email_not_unlocked") ? contact.email : null);
+  const displayPhone = revealedData?.phone || contact.phone;
 
   return (
-    <Card className="bg-background border border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
+    <Card className="bg-background border border-border/50 shadow-sm hover:shadow-md transition-all duration-300">
       <CardContent className="p-6 space-y-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
@@ -194,19 +228,7 @@ function ContactCard({ contact }: { contact: Contact }) {
               <h5 className="font-bold text-lg text-foreground">
                 {contact.prenom} {contact.nom}
               </h5>
-              {contact.linkedin_url && (
-                <a
-                  href={contact.linkedin_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center text-primary hover:text-primary/80 transition-colors"
-                  title="Voir le profil LinkedIn"
-                >
-                  <Linkedin size={18} />
-                </a>
-              )}
             </div>
-            {/* Display both LinkedIn headline and job title */}
             <div className="mt-1 space-y-1">
               {contact.linkedin_headline && (
                 <p className="text-sm text-muted-foreground font-medium leading-relaxed">
@@ -235,23 +257,81 @@ function ContactCard({ contact }: { contact: Contact }) {
             )}
           </div>
         </div>
-        <div className="space-y-3">
-          {/* Email */}
-          <div className="flex items-center gap-3">
-            <Mail className="text-primary" size={18} />
-            {emailLocked ? (
-              <span className="text-sm text-muted-foreground italic">Email disponible après déverrouillage</span>
-            ) : (
-              <a href={`mailto:${contact.email}`} className="text-sm text-primary hover:underline">
-                {contact.email}
-              </a>
-            )}
+
+        {/* Apple-style Reveal Button */}
+        {needsReveal && !revealedData && (
+          <div className="flex justify-center py-4">
+            <Button
+              onClick={handleReveal}
+              disabled={isRevealing}
+              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-medium px-6 py-2.5 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50"
+            >
+              {isRevealing ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                  Révélation en cours...
+                </>
+              ) : (
+                <>
+                  <Phone className="mr-2" size={16} />
+                  Révéler les coordonnées
+                </>
+              )}
+            </Button>
           </div>
-          {/* Téléphone */}
-          {contact.phone && (
-            <div className="flex items-center gap-3">
-              <Phone className="text-primary" size={18} />
-              <span className="text-sm text-foreground">{contact.phone}</span>
+        )}
+
+        {/* Status Message */}
+        {revealedData?.phoneStatus === 'pending_webhook' && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+            <div className="flex items-center gap-2">
+              <div className="animate-pulse">⏳</div>
+              <span>Numéro de téléphone en cours de récupération (2-5 min)</span>
+            </div>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {revealError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+            {revealError}
+          </div>
+        )}
+
+        {/* Contact Information - Priority: Phone > LinkedIn > Email */}
+        <div className="space-y-3">
+          {/* Phone - Priority #1 */}
+          {displayPhone && (
+            <div className="flex items-center gap-3 bg-blue-50/50 rounded-lg p-3">
+              <Phone className="text-blue-600" size={18} />
+              <a href={`tel:${displayPhone}`} className="text-sm font-medium text-blue-900 hover:underline">
+                {displayPhone}
+              </a>
+            </div>
+          )}
+
+          {/* LinkedIn - Priority #2 */}
+          {contact.linkedin_url && (
+            <div className="flex items-center gap-3 bg-blue-50/30 rounded-lg p-3">
+              <Linkedin className="text-blue-600" size={18} />
+              <a
+                href={contact.linkedin_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-900 hover:underline"
+              >
+                Voir le profil LinkedIn
+              </a>
+            </div>
+          )}
+
+          {/* Email - Priority #3 */}
+          {displayEmail && (
+            <div className="flex items-center gap-3 bg-slate-50/50 rounded-lg p-3">
+              <Mail className="text-slate-600" size={18} />
+              <a href={`mailto:${displayEmail}`} className="text-sm text-slate-900 hover:underline">
+                {displayEmail}
+              </a>
             </div>
           )}
         </div>

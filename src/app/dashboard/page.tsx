@@ -319,11 +319,7 @@ export default function Dashboard() {
 
       {loading && (
         <PremiumLoadingScreen
-          stage={
-            loadingProgress < 33 ? "sources" :
-            loadingProgress < 75 ? "ai" :
-            loadingProgress < 100 ? "optimization" : "complete"
-          }
+          stage={stage}
           progress={loadingProgress}
           customMessage={loadingStage}
         />

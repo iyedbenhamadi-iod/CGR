@@ -403,19 +403,9 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
 
       console.log('✅ Réponse Apollo:', response.data.people?.length || 0, 'contacts');
 
-      // Parse initial response
+      // Parse initial response WITHOUT automatic enrichment
+      // Users will manually reveal contact info when needed
       const initialResult = this.parseApolloResponse(response.data, request);
-
-      // Enrich contacts to reveal emails and phone numbers
-      if (initialResult.success && initialResult.contacts.length > 0) {
-        console.log('🔓 Enrichissement des contacts pour révéler emails/téléphones...');
-        const enrichedContacts = await this.enrichApolloContacts(initialResult.contacts);
-
-        return {
-          ...initialResult,
-          contacts: enrichedContacts
-        };
-      }
 
       return initialResult;
 
