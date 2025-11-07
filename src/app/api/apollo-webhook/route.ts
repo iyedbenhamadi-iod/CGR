@@ -113,8 +113,3 @@ export async function GET(request: NextRequest) {
     message: 'Phone number not yet received from Apollo webhook'
   });
 }
-
-// Export the cache for use in other modules
-export function getPhoneNumberCache() {
-  return phoneNumberCache;
-}
