@@ -70,20 +70,31 @@ export async function POST(request: NextRequest) {
 
     // Extract phone from immediate response (if available)
     let phone: string | undefined;
-    if (person.phone_numbers && person.phone_numbers.length > 0) {
+    let phoneStatus: string;
+
+    // Check if Apollo has ANY phone data at all
+    if (!person.phone_numbers || person.phone_numbers.length === 0) {
+      // No phone numbers array = Apollo doesn't have this data
+      phoneStatus = 'not_available';
+      console.log(`⚠️ No phone data in Apollo database for ${firstName} ${lastName}`);
+    } else {
+      // Has phone_numbers array - check for immediate phone
       const primaryPhone = person.phone_numbers.find((p: any) => p.type === 'mobile')
         || person.phone_numbers.find((p: any) => p.type === 'work')
         || person.phone_numbers[0];
-      phone = primaryPhone.sanitized_number || primaryPhone.raw_number;
-    }
 
-    // If no immediate phone, it will arrive via webhook
-    const phoneStatus = phone ? 'available' : 'pending_webhook';
+      phone = primaryPhone.sanitized_number || primaryPhone.raw_number;
+
+      // If we got a phone immediately, it's available
+      // If phone_numbers exists but no phone extracted, webhook might deliver more
+      phoneStatus = phone ? 'available' : 'pending_webhook';
+    }
 
     console.log(`✅ Contact revealed: ${firstName} ${lastName}`, {
       has_email: !!email,
       has_phone: !!phone,
-      phone_status: phoneStatus
+      phone_status: phoneStatus,
+      phone_numbers_count: person.phone_numbers?.length || 0
     });
 
     return NextResponse.json({
@@ -92,7 +103,9 @@ export async function POST(request: NextRequest) {
       phone: phone || null,
       phoneStatus,
       linkedin_url: person.linkedin_url || null,
-      message: phoneStatus === 'pending_webhook'
+      message: phoneStatus === 'not_available'
+        ? 'Phone number not available in Apollo database'
+        : phoneStatus === 'pending_webhook'
         ? 'Phone number will be available in 2-5 minutes. Please check back.'
         : 'Contact information revealed'
     });

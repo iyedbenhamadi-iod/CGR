@@ -282,9 +282,12 @@ function ContactCard({ contact }: { contact: Contact }) {
           phoneStatus: data.phoneStatus
         });
 
-        // If phone is pending, start polling
+        // Only start polling if phone is actually pending (not if it's not_available)
         if (data.phoneStatus === 'pending_webhook') {
           startPhonePolling();
+        } else if (data.phoneStatus === 'not_available') {
+          // Phone not in Apollo database - show message immediately
+          setPhoneNotFound(true);
         }
       } else {
         setRevealError(data.error || 'Failed to reveal contact');
