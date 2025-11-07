@@ -178,6 +178,7 @@ function ContactCard({ contact }: { contact: Contact }) {
     phoneStatus?: string;
   } | null>(null);
   const [revealError, setRevealError] = React.useState<string | null>(null);
+  const [phoneNotFound, setPhoneNotFound] = React.useState(false);
   const pollingIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const hasContactInfo = contact.email && !contact.email.includes("email_not_unlocked") && contact.phone;
@@ -242,12 +243,14 @@ function ContactCard({ contact }: { contact: Contact }) {
       attempts++;
 
       if (attempts >= 12) {
-        // Stop after 12 attempts (6 minutes)
+        // Stop after 12 attempts (6 minutes) - phone not available in Apollo database
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
           pollingIntervalRef.current = null;
         }
-        console.log('⏱️ Phone search completed');
+        setPhoneNotFound(true);
+        setRevealedData(prev => prev ? { ...prev, phoneStatus: 'not_available' } : null);
+        console.log('⏱️ Phone search completed - not found in Apollo database');
       } else {
         checkPhoneAvailability();
       }
@@ -358,8 +361,8 @@ function ContactCard({ contact }: { contact: Contact }) {
           </div>
         )}
 
-        {/* Status Message - Apple Style: Clean, No Technical Details */}
-        {revealedData?.phoneStatus === 'pending_webhook' && (
+        {/* Status Message - Searching for Phone */}
+        {revealedData?.phoneStatus === 'pending_webhook' && !phoneNotFound && (
           <div className="bg-blue-50/30 rounded-xl p-4">
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -369,6 +372,19 @@ function ContactCard({ contact }: { contact: Contact }) {
               <div>
                 <p className="text-sm font-medium text-blue-900">Recherche du numéro de téléphone...</p>
                 <p className="text-xs text-blue-700 mt-0.5">Le numéro apparaîtra automatiquement dans quelques instants</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Phone Not Available Message */}
+        {phoneNotFound && revealedData?.phoneStatus === 'not_available' && (
+          <div className="bg-amber-50/50 rounded-xl p-4 border border-amber-200/50">
+            <div className="flex items-center gap-3">
+              <Phone className="text-amber-600" size={20} />
+              <div>
+                <p className="text-sm font-medium text-amber-900">Numéro de téléphone non disponible</p>
+                <p className="text-xs text-amber-700 mt-0.5">Ce contact n'a pas de numéro enregistré dans la base de données Apollo</p>
               </div>
             </div>
           </div>
