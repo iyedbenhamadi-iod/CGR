@@ -171,6 +171,24 @@ export default function StepCompetitorContact({ formData, setFormData }: StepPro
               )}
             </CardContent>
           </Card>
+
+          <div className="mt-8 space-y-3">
+            <Label htmlFor="customRole" className="text-sm font-medium text-muted-foreground">
+              Rôle personnalisé (optionnel)
+            </Label>
+            <Input
+              id="customRole"
+              value={formData.customRole || ""}
+              onChange={(e) => setFormData({ ...formData, customRole: e.target.value })}
+              placeholder="Ex: Directeur Innovation, Chef de projet R&D..."
+              className="h-9 text-sm border-border/60 focus:border-primary/60 rounded-md"
+            />
+            {formData.customRole && formData.customRole.trim() !== "" && (
+              <p className="text-xs text-primary">
+                <strong>Rôle personnalisé :</strong> {formData.customRole}
+              </p>
+            )}
+          </div>
         </>
       )}
     </div>

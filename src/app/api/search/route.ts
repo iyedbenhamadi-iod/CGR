@@ -28,6 +28,7 @@ interface EnhancedSearchData {
   includeEmails?: boolean;
   includeLinkedIn?: boolean;
   contactRoles?: string[];
+  customRole?: string; // Custom free text role field
   regionGeographique?: string;
   regionPersonnalisee?: string;
   // REMOVED: typeProduitConcurrent (old field)
@@ -292,6 +293,7 @@ async function handleContactSearch(searchData: EnhancedSearchData, request: Next
     nomEntreprise: searchData.nomEntreprise,
     posteRecherche: searchData.posteRecherche,
     contactRoles: searchData.contactRoles,
+    customRole: searchData.customRole,
     secteurActivite: searchData.secteurActivite,
     includeEmails: searchData.includeEmails,
     includeLinkedIn: searchData.includeLinkedIn,

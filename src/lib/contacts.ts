@@ -9,12 +9,10 @@ interface ContactInfo {
   email?: string;
   phone?: string;
   linkedin_url?: string;
+  linkedin_headline?: string; // LinkedIn headline/entête
   verified: boolean;
-  accroche_personnalisee?: string;
   sources: string[];
   relevance_score?: number;
-  accroche?: string;
-  pitch?: string;
 }
 
 interface ContactSearchRequest {
@@ -24,6 +22,7 @@ interface ContactSearchRequest {
   includeEmails?: boolean;
   includeLinkedIn?: boolean;
   contactRoles?: string[];
+  customRole?: string; // Custom free text role field
   siteWebEntreprise?: string;
   zoneGeographique?: string;
   nombreResultats?: number;
@@ -428,8 +427,17 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
       searchParams.person_locations = [request.zoneGeographique];
     }
 
+    // Combine predefined roles and custom role
+    const allRoles: string[] = [];
     if (request.contactRoles && request.contactRoles.length > 0) {
-      const titles = this.convertRolesToApolloTitles(request.contactRoles);
+      allRoles.push(...request.contactRoles);
+    }
+    if (request.customRole && request.customRole.trim() !== '') {
+      allRoles.push(request.customRole.trim());
+    }
+
+    if (allRoles.length > 0) {
+      const titles = this.convertRolesToApolloTitles(allRoles);
       if (titles.length > 0) {
         searchParams.person_titles = titles;
       }
@@ -476,6 +484,41 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
             phone = this.formatInternationalPhone(primaryPhone.sanitized_number || primaryPhone.raw_number);
           }
 
+          // Extract LinkedIn headline with fallback to title or first employment
+          let linkedinHeadline: string | undefined;
+
+          // Debug: Log Apollo person data structure
+          console.log('🔍 Apollo person data:', {
+            name: `${person.first_name} ${person.last_name}`,
+            headline: person.headline,
+            linkedin_headline: person.linkedin_headline,
+            title: person.title,
+            employment_history_length: person.employment_history?.length || 0,
+            first_job_title: person.employment_history?.[0]?.title
+          });
+
+          if (person.headline) {
+            linkedinHeadline = person.headline;
+          } else if (person.linkedin_headline) {
+            linkedinHeadline = person.linkedin_headline;
+          } else if (person.title) {
+            linkedinHeadline = person.title;
+          } else if (person.employment_history && person.employment_history.length > 0) {
+            const currentJob = person.employment_history[0];
+            linkedinHeadline = currentJob.title || undefined;
+          }
+
+          console.log('✅ Extracted headline:', linkedinHeadline);
+
+          // Debug: Log email and phone data from Apollo
+          console.log('📧 Apollo contact details:', {
+            name: `${person.first_name} ${person.last_name}`,
+            raw_email: person.email,
+            email_status: person.email_status,
+            phone_numbers: person.phone_numbers?.length || 0,
+            raw_phone: person.phone_numbers?.[0]
+          });
+
           const contact: ContactInfo = {
             nom: person.last_name || '',
             prenom: person.first_name || '',
@@ -483,14 +526,17 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
             email: this.validateAndCleanEmail(person.email),
             phone: phone,
             linkedin_url: person.linkedin_url || undefined,
+            linkedin_headline: linkedinHeadline,
             verified: true,
-            accroche_personnalisee: this.generatePersonalizedPitch(person, request.nomEntreprise),
             sources: ['Apollo.io'],
             relevance_score: 0.7
           };
 
-          contact.accroche = contact.accroche_personnalisee;
-          contact.pitch = contact.accroche_personnalisee;
+          console.log('✅ Processed contact:', {
+            name: `${contact.prenom} ${contact.nom}`,
+            has_email: !!contact.email,
+            has_phone: !!contact.phone
+          });
 
           return contact;
         })
@@ -538,8 +584,17 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
   }
 
   private async startDeepResearchJob(request: ContactSearchRequest): Promise<string> {
-    const rolesText = request.contactRoles && request.contactRoles.length > 0
-      ? request.contactRoles.join(', ')
+    // Combine predefined roles and custom role
+    const allRoles: string[] = [];
+    if (request.contactRoles && request.contactRoles.length > 0) {
+      allRoles.push(...request.contactRoles);
+    }
+    if (request.customRole && request.customRole.trim() !== '') {
+      allRoles.push(request.customRole.trim());
+    }
+
+    const rolesText = allRoles.length > 0
+      ? allRoles.join(', ')
       : 'Responsable achats, Directeur achats, Acheteur, Buyer';
 
     const prompt = `Trouve des contacts professionnels RÉELS chez "${request.nomEntreprise}"${request.zoneGeographique ? ` en ${request.zoneGeographique}` : ''}.
@@ -798,16 +853,10 @@ IMPORTANT:
         email: email,
         phone: phone,
         linkedin_url: linkedinUrl,
+        linkedin_headline: rawContact.poste, // Use poste as fallback headline for Perplexity results
         verified: false,
         sources: Array.isArray(rawContact.sources) ? rawContact.sources : ['Perplexity Deep Research'],
-        relevance_score: 0.6,
-        accroche_personnalisee: this.generatePersonalizedPitch(
-          { 
-            first_name: rawContact.prenom, 
-            title: rawContact.poste 
-          }, 
-          request.nomEntreprise
-        )
+        relevance_score: 0.6
       };
 
     } catch (error: any) {
@@ -986,10 +1035,4 @@ IMPORTANT:
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  private generatePersonalizedPitch(person: any, entreprise: string): string {
-    const prenom = person.first_name || '';
-    const poste = person.title || 'votre rôle';
-    
-    return `Bonjour ${prenom}, en tant que ${poste} chez ${entreprise}, nous pensons que notre expertise en composants mécaniques pourrait vous intéresser. Seriez-vous disponible pour un échange rapide ?`;
-  }
 }

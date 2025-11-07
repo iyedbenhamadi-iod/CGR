@@ -39,6 +39,7 @@ export default function SearchWizard({ onSearch, loading, prefillData }: SearchW
     siteWebEntreprise: "",
     nombreResultats: 10,
     contactRoles: [],
+    customRole: "",
     secteurActiviteLibre: '',
     zoneGeographiqueLibre: '',
     regionPersonnalisee: "",

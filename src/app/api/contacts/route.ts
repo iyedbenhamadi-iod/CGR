@@ -86,6 +86,7 @@ interface ContactRequest {
   includeEmails?: boolean;
   includeLinkedIn?: boolean;
   contactRoles?: string[];
+  customRole?: string; // Custom free text role field
   siteWebEntreprise?: string;
   nombreResultats?: number;
   location?: string; // ✅ AJOUTÉ : Support pour 'location' depuis /api/search
@@ -109,12 +110,13 @@ export async function POST(request: NextRequest) {
     // ✅ MAPPING: location → zoneGeographique
     const zoneGeo = requestData.location || requestData.zoneGeographique;
     
-    // Enhanced cache key to include contact roles
+    // Enhanced cache key to include contact roles and custom role
     const cacheKeyParams = [
       `company-${requestData.nomEntreprise}`,
       `position-${requestData.posteRecherche || 'all'}`,
       `sector-${requestData.secteurActivite || 'all'}`,
       `roles-${requestData.contactRoles?.sort().join(',') || 'default'}`,
+      `customRole-${requestData.customRole || 'none'}`,
       `website-${requestData.siteWebEntreprise || 'none'}`,
       `zone-${zoneGeo || 'none'}`, // ✅ AJOUTÉ : Inclure zone dans cache
       `results-${requestData.nombreResultats || 50}`
@@ -132,7 +134,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ...cachedResult, cached: true });
     }
     
-    // ✅ TRANSFORMATION: Créer la requête avec zoneGeographique
+    // ✅ TRANSFORMATION: Créer la requête avec zoneGeographique et customRole
     const searchRequest = {
       nomEntreprise: requestData.nomEntreprise,
       posteRecherche: requestData.posteRecherche,
@@ -140,6 +142,7 @@ export async function POST(request: NextRequest) {
       includeEmails: requestData.includeEmails,
       includeLinkedIn: requestData.includeLinkedIn,
       contactRoles: requestData.contactRoles,
+      customRole: requestData.customRole,
       siteWebEntreprise: requestData.siteWebEntreprise,
       nombreResultats: requestData.nombreResultats,
       zoneGeographique: zoneGeo // ✅ MAPPING APPLIQUÉ
@@ -159,6 +162,7 @@ export async function POST(request: NextRequest) {
       contactsFound: contactResult.contacts?.length || 0,
       error: contactResult.error,
       contactRoles: requestData.contactRoles,
+      customRole: requestData.customRole,
       zoneGeographique: zoneGeo
     });
     
@@ -192,9 +196,9 @@ export async function POST(request: NextRequest) {
         email: contact.email || undefined,
         phone: contact.phone || undefined,
         linkedin_url: hasValidLinkedIn ? contact.linkedin_url : undefined,
+        linkedin_headline: contact.linkedin_headline || undefined,
         linkedin_verified: hasValidLinkedIn,
         verified: contact.verified || false,
-        accroche_personnalisee: contact.accroche_personnalisee || contact.accroche || contact.pitch || undefined,
         entreprise: requestData.nomEntreprise,
         secteur: requestData.secteurActivite || '',
         sources: contact.sources || [],
@@ -248,6 +252,7 @@ export async function POST(request: NextRequest) {
         includeEmails: requestData.includeEmails,
         includeLinkedIn: requestData.includeLinkedIn,
         contactRoles: requestData.contactRoles,
+        customRole: requestData.customRole,
         siteWebEntreprise: requestData.siteWebEntreprise,
         nombreResultats: requestData.nombreResultats,
         zoneGeographique: zoneGeo // ✅ AJOUTÉ : Inclure dans searchCriteria
@@ -268,9 +273,9 @@ export async function POST(request: NextRequest) {
           email: !!contact.email,
           phone: !!contact.phone,
           linkedin_url: !!contact.linkedin_url,
+          linkedin_headline: !!contact.linkedin_headline,
           linkedin_verified: contact.linkedin_verified,
           verified: contact.verified,
-          accroche_personnalisee: !!contact.accroche_personnalisee,
           matchedRoles: contact.matchedRoles
         }))
       }
@@ -327,6 +332,7 @@ export async function GET(request: NextRequest) {
     const position = searchParams.get('position');
     const sector = searchParams.get('sector');
     const roles = searchParams.get('roles');
+    const customRole = searchParams.get('customRole');
     const website = searchParams.get('website');
     const zone = searchParams.get('zone'); // ✅ AJOUTÉ
     const results = searchParams.get('results');
@@ -344,6 +350,7 @@ export async function GET(request: NextRequest) {
       `position-${position || 'all'}`,
       `sector-${sector || 'all'}`,
       `roles-${roles || 'default'}`,
+      `customRole-${customRole || 'none'}`,
       `website-${website || 'none'}`,
       `zone-${zone || 'none'}`, // ✅ AJOUTÉ
       `results-${results || '10'}`

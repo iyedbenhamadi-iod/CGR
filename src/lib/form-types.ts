@@ -16,7 +16,8 @@ export interface FormData {
   nomEntreprise: string
   siteWebEntreprise: string
   nombreResultats: number
-  contactRoles: string[] 
+  contactRoles: string[]
+  customRole?: string // Custom free text role field
   location?: string
   
     regionGeographique?: string // Add this line

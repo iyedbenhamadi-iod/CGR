@@ -2,50 +2,50 @@
 
 import { useState } from "react"
 import ResultsDisplay from "@/components/ui/ResultsDisplay"
+import PremiumLoadingScreen from "@/components/ui/PremiumLoadingScreen"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { TriangleAlert, Undo2, Sparkles, Brain, Database, Network, Search as SearchIcon, CheckCircle2, Zap, TrendingUp, Target, Loader2 } from "lucide-react"
 import SearchWizard from "@/components/searchWizard"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import type { FormData } from "@/lib/form-types"
+import { useLoadingProgress } from "@/hooks/useLoadingProgress"
 
 export default function Dashboard() {
   const [results, setResults] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
-  const [loadingStage, setLoadingStage] = useState<string>("")
-  const [loadingProgress, setLoadingProgress] = useState(0)
   const [error, setError] = useState("")
   const [prefillData, setPrefillData] = useState<Partial<FormData> | undefined>(undefined)
 
+  // Use the centralized loading hook
+  const {
+    loading,
+    loadingStage,
+    loadingProgress,
+    stage,
+    startLoading,
+    stopLoading
+  } = useLoadingProgress()
+
   const handleSearch = async (searchData: any) => {
-    setLoading(true)
     setError("")
     setResults(null)
-    setLoadingStage("Initialisation de l'analyse IA...")
-    setLoadingProgress(0)
-    
+
     console.log("Frontend: Initiating search with data:", searchData)
-    
-    // Premium loading messages with progress
-    const loadingStages = [
-      { message: "Connexion aux sources de données premium", progress: 15 },
-      { message: "Activation des algorithmes d'intelligence artificielle", progress: 30 },
-      { message: "Exploration du web profond et sources propriétaires", progress: 45 },
-      { message: "Analyse sémantique et validation des données", progress: 60 },
-      { message: "Scoring et classification intelligente", progress: 75 },
-      { message: "Enrichissement multicouche des profils", progress: 90 },
-      { message: "Finalisation et optimisation des résultats", progress: 95 }
-    ];
-    
-    let stageIndex = 0;
-    const stageInterval = setInterval(() => {
-      if (stageIndex < loadingStages.length) {
-        setLoadingStage(loadingStages[stageIndex].message);
-        setLoadingProgress(loadingStages[stageIndex].progress);
-        stageIndex++;
-      }
-    }, 3500);
-    
+
+    // Start loading with custom stages
+    startLoading({
+      stages: [
+        { message: "Connexion aux sources de données premium", progress: 15 },
+        { message: "Activation des algorithmes d'intelligence artificielle", progress: 30 },
+        { message: "Exploration du web profond et sources propriétaires", progress: 45 },
+        { message: "Analyse sémantique et validation des données", progress: 60 },
+        { message: "Scoring et classification intelligente", progress: 75 },
+        { message: "Enrichissement multicouche des profils", progress: 90 },
+        { message: "Finalisation et optimisation des résultats", progress: 95 }
+      ],
+      autoProgress: true
+    });
+
     try {
       const response = await fetch("/api/search", {
         method: "POST",
@@ -54,35 +54,25 @@ export default function Dashboard() {
         },
         body: JSON.stringify(searchData),
       })
-      
-      clearInterval(stageInterval);
-      
+
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.details || "Erreur lors de la recherche")
       }
-      
+
       const data = await response.json()
       console.log("Frontend: 🔍 API Response received:", data)
-      
-      setLoadingStage("Préparation de l'affichage...")
-      setLoadingProgress(100)
-      
+
       const transformedData = transformApiResponse(data)
       console.log("Frontend: 🔄 Transformed Data for ResultsDisplay:", transformedData)
-      
+
       setResults(transformedData)
-      setLoadingStage("")
-      setLoadingProgress(0)
-      
+
     } catch (err: any) {
-      clearInterval(stageInterval);
       setError(`Erreur lors de la recherche: ${err.message || "Veuillez réessayer."}`)
       console.error("Frontend: ❌ Search Error:", err)
-      setLoadingStage("")
-      setLoadingProgress(0)
     } finally {
-      setLoading(false)
+      stopLoading()
     }
   }
 
@@ -121,6 +111,7 @@ export default function Dashboard() {
       nomEntreprise: companyName,
       siteWebEntreprise: website || "",
       contactRoles: [],
+      customRole: "",
       location: "",
       secteursActivite: [],
       zoneGeographique: [],
@@ -190,8 +181,8 @@ export default function Dashboard() {
               email: contact.email || undefined,
               phone: contact.phone || undefined,
               linkedin_url: contact.linkedin_url || undefined,
+              linkedin_headline: contact.linkedin_headline || undefined,
               verified: contact.verified || false,
-              accroche_personnalisee: contact.accroche_personnalisee || undefined,
               entreprise: contact.entreprise || "",
               secteur: contact.secteur || "",
               sources: contact.sources || [],
@@ -327,96 +318,15 @@ export default function Dashboard() {
       )}
 
       {loading && (
-        <div className="mt-8 w-full max-w-5xl">
-          <Card className="border-primary/20 shadow-2xl bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950">
-            <CardContent className="p-10">
-              <div className="flex flex-col items-center space-y-8">
-                
-                {/* Modern circular loader with gradient */}
-                <div className="relative">
-                  {/* Outer ring with gradient */}
-                  <div className="absolute inset-0">
-                    <svg className="animate-spin h-32 w-32" viewBox="0 0 100 100">
-                      <defs>
-                        <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stopColor="#3b82f6" />
-                          <stop offset="50%" stopColor="#8b5cf6" />
-                          <stop offset="100%" stopColor="#ec4899" />
-                        </linearGradient>
-                      </defs>
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="45"
-                        stroke="url(#gradient)"
-                        strokeWidth="4"
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeDasharray="70 200"
-                      />
-                    </svg>
-                  </div>
-                  
-                  {/* Center icon with pulse */}
-                  <div className="relative flex items-center justify-center h-32 w-32">
-                    <div className="absolute inset-0 bg-primary/10 rounded-full animate-ping"></div>
-                    <div className="relative bg-primary rounded-full p-6 shadow-lg">
-                      <Sparkles className="h-8 w-8 text-primary-foreground" />
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Title and stage */}
-                <div className="text-center space-y-3 max-w-2xl">
-                  <AlertTitle className="text-3xl font-bold text-foreground">
-                    Analyse IA en cours
-                  </AlertTitle>
-                  <AlertDescription className="text-lg text-muted-foreground">
-                    {loadingStage}
-                  </AlertDescription>
-                </div>
-                
-                {/* Progress bar matching CGR theme */}
-                <div className="w-full max-w-2xl space-y-2">
-                  <div className="flex justify-between text-sm text-muted-foreground font-medium">
-                    <span>Progression</span>
-                    <span className="text-primary font-bold">{loadingProgress}%</span>
-                  </div>
-                  <div className="relative h-3 bg-secondary rounded-full overflow-hidden border border-border">
-                    <div 
-                      className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full transition-all duration-700 ease-out"
-                      style={{ width: `${loadingProgress}%` }}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Stats grid */}
-                <div className="grid grid-cols-3 gap-6 w-full max-w-2xl pt-6 border-t border-border">
-                  <div className="text-center space-y-2">
-                    <Database className="h-8 w-8 text-blue-500 mx-auto" />
-                    <div className="text-sm font-medium text-muted-foreground">Sources multiples</div>
-                  </div>
-                  <div className="text-center space-y-2">
-                    <Brain className="h-8 w-8 text-purple-500 mx-auto" />
-                    <div className="text-sm font-medium text-muted-foreground">IA avancée</div>
-                  </div>
-                  <div className="text-center space-y-2">
-                    <TrendingUp className="h-8 w-8 text-pink-500 mx-auto" />
-                    <div className="text-sm font-medium text-muted-foreground">Qualité 10/10</div>
-                  </div>
-                </div>
-                
-                {/* Description */}
-                <p className="text-sm text-center text-muted-foreground max-w-2xl leading-relaxed pt-4 border-t border-border">
-                  Notre intelligence artificielle analyse des centaines de sources en temps réel pour identifier les prospects les plus qualifiés. 
-                  <span className="text-primary font-semibold"> Cette profondeur d'analyse garantit des résultats exceptionnels.</span>
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <PremiumLoadingScreen
+          stage={
+            loadingProgress < 33 ? "sources" :
+            loadingProgress < 75 ? "ai" :
+            loadingProgress < 100 ? "optimization" : "complete"
+          }
+          progress={loadingProgress}
+          customMessage={loadingStage}
+        />
       )}
 
       <style jsx>{`

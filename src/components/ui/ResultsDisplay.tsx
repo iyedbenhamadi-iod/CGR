@@ -36,12 +36,7 @@ interface Contact {
   email?: string
   phone?: string
   linkedin_url?: string
-  accroche_personnalisee?:
-    | {
-        texte: string
-        source_accroche: string
-      }
-    | string
+  linkedin_headline?: string // LinkedIn headline/entête
   verified?: boolean
   entreprise?: string
   secteur?: string
@@ -177,15 +172,56 @@ function getHostname(url: string): string {
 function ContactCard({ contact }: { contact: Contact }) {
   const emailLocked = !contact.email || contact.email.includes("email_not_unlocked")
 
+  // Debug: Log contact data including email and phone
+  console.log('📋 Contact card data:', {
+    name: `${contact.prenom} ${contact.nom}`,
+    poste: contact.poste,
+    linkedin_headline: contact.linkedin_headline,
+    has_headline: !!contact.linkedin_headline,
+    email: contact.email,
+    has_email: !!contact.email,
+    phone: contact.phone,
+    has_phone: !!contact.phone,
+    emailLocked: !contact.email || contact.email.includes("email_not_unlocked")
+  });
+
   return (
     <Card className="bg-background border border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
       <CardContent className="p-6 space-y-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
-            <h5 className="font-bold text-lg text-foreground">
-              {contact.prenom} {contact.nom}
-            </h5>
-            <p className="text-sm text-muted-foreground mt-1">{contact.poste}</p>
+            <div className="flex items-center gap-3 mb-2">
+              <h5 className="font-bold text-lg text-foreground">
+                {contact.prenom} {contact.nom}
+              </h5>
+              {contact.linkedin_url && (
+                <a
+                  href={contact.linkedin_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center text-primary hover:text-primary/80 transition-colors"
+                  title="Voir le profil LinkedIn"
+                >
+                  <Linkedin size={18} />
+                </a>
+              )}
+            </div>
+            {/* Display both LinkedIn headline and job title */}
+            <div className="mt-1 space-y-1">
+              {contact.linkedin_headline && (
+                <p className="text-sm text-muted-foreground font-medium leading-relaxed">
+                  {contact.linkedin_headline}
+                </p>
+              )}
+              {contact.poste && contact.poste !== contact.linkedin_headline && (
+                <p className="text-xs text-muted-foreground/80">
+                  {contact.poste}
+                </p>
+              )}
+              {!contact.linkedin_headline && !contact.poste && (
+                <p className="text-sm text-muted-foreground italic">Poste non spécifié</p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {contact.verified ? (
@@ -216,45 +252,6 @@ function ContactCard({ contact }: { contact: Contact }) {
             <div className="flex items-center gap-3">
               <Phone className="text-primary" size={18} />
               <span className="text-sm text-foreground">{contact.phone}</span>
-            </div>
-          )}
-          {/* LinkedIn */}
-          {contact.linkedin_url && (
-            <div className="flex items-center gap-3">
-              <Linkedin className="text-primary" size={18} />
-              <a
-                href={contact.linkedin_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center text-sm text-primary hover:underline"
-              >
-                Profil LinkedIn <ExternalLink className="w-3 h-3 ml-1" />
-              </a>
-            </div>
-          )}
-          {/* Accroche personnalisée */}
-          {contact.accroche_personnalisee && (
-            <div className="mt-4 p-4 bg-accent/10 rounded-lg border-l-4 border-accent space-y-2">
-              <p className="text-sm text-accent-foreground font-semibold">Accroche suggérée :</p>
-              {typeof contact.accroche_personnalisee === "object" && contact.accroche_personnalisee.texte ? (
-                <>
-                  <p className="text-base text-foreground italic">"{contact.accroche_personnalisee.texte}"</p>
-                  {contact.accroche_personnalisee.source_accroche && (
-                    <a
-                      href={contact.accroche_personnalisee.source_accroche}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center text-xs text-primary hover:underline mt-1"
-                    >
-                      Source <ExternalLink className="w-3 h-3 ml-1" />
-                    </a>
-                  )}
-                </>
-              ) : typeof contact.accroche_personnalisee === "string" && contact.accroche_personnalisee.trim() ? (
-                <p className="text-base text-foreground italic">"{contact.accroche_personnalisee}"</p>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">Accroche en cours de génération...</p>
-              )}
             </div>
           )}
         </div>
