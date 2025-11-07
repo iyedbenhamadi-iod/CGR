@@ -178,9 +178,94 @@ function ContactCard({ contact }: { contact: Contact }) {
     phoneStatus?: string;
   } | null>(null);
   const [revealError, setRevealError] = React.useState<string | null>(null);
+  const [isCheckingPhone, setIsCheckingPhone] = React.useState(false);
+  const [pollAttempts, setPollAttempts] = React.useState(0);
+  const pollingIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const hasContactInfo = contact.email && !contact.email.includes("email_not_unlocked") && contact.phone;
   const needsReveal = !hasContactInfo;
+
+  // Cleanup polling on unmount
+  React.useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Check webhook cache for phone number
+  const checkPhoneAvailability = async () => {
+    if (!contact.prenom || !contact.nom) return;
+
+    setIsCheckingPhone(true);
+    try {
+      const params = new URLSearchParams({
+        first_name: contact.prenom,
+        last_name: contact.nom,
+        organization: contact.entreprise || 'unknown'
+      });
+
+      const response = await fetch(`/api/apollo-webhook?${params}`);
+      const data = await response.json();
+
+      if (data.found && data.phone) {
+        // Phone number received! Update state
+        setRevealedData(prev => ({
+          ...prev,
+          phone: data.phone,
+          phoneStatus: 'available'
+        }));
+
+        // Stop polling
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+
+        console.log('✅ Phone number retrieved from webhook:', data.phone);
+      }
+    } catch (error) {
+      console.error('Error checking phone availability:', error);
+    } finally {
+      setIsCheckingPhone(false);
+    }
+  };
+
+  // Start polling for phone number
+  const startPhonePolling = React.useCallback(() => {
+    if (pollingIntervalRef.current) return; // Already polling
+
+    console.log('🔄 Starting phone polling...');
+
+    // Check immediately
+    checkPhoneAvailability();
+
+    // Then check every 30 seconds
+    pollingIntervalRef.current = setInterval(() => {
+      setPollAttempts(prev => {
+        const newAttempts = prev + 1;
+
+        // Stop after 12 attempts (6 minutes)
+        if (newAttempts >= 12) {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          console.log('⏱️ Phone polling stopped after 6 minutes');
+        } else {
+          checkPhoneAvailability();
+        }
+
+        return newAttempts;
+      });
+    }, 30000); // 30 seconds
+  }, [contact.prenom, contact.nom, contact.entreprise]);
+
+  // Manual check button handler
+  const handleCheckPhone = async () => {
+    await checkPhoneAvailability();
+  };
 
   const handleReveal = async () => {
     setIsRevealing(true);
@@ -206,6 +291,11 @@ function ContactCard({ contact }: { contact: Contact }) {
           email: data.email,
           phoneStatus: data.phoneStatus
         });
+
+        // If phone is pending, start polling
+        if (data.phoneStatus === 'pending_webhook') {
+          startPhonePolling();
+        }
       } else {
         setRevealError(data.error || 'Failed to reveal contact');
       }
@@ -283,11 +373,38 @@ function ContactCard({ contact }: { contact: Contact }) {
 
         {/* Status Message */}
         {revealedData?.phoneStatus === 'pending_webhook' && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-            <div className="flex items-center gap-2">
-              <div className="animate-pulse">⏳</div>
-              <span>Numéro de téléphone en cours de récupération (2-5 min)</span>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-blue-800">
+                <div className="animate-pulse">⏳</div>
+                <span>Numéro de téléphone en cours de récupération (2-5 min)</span>
+              </div>
+              <Button
+                onClick={handleCheckPhone}
+                disabled={isCheckingPhone}
+                size="sm"
+                variant="outline"
+                className="bg-white hover:bg-blue-50 text-blue-700 border-blue-300 text-xs"
+              >
+                {isCheckingPhone ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-2 border-blue-600 border-t-transparent mr-1" />
+                    Vérification...
+                  </>
+                ) : (
+                  <>
+                    <Phone className="mr-1" size={12} />
+                    Vérifier maintenant
+                  </>
+                )}
+              </Button>
             </div>
+            {pollingIntervalRef.current && (
+              <div className="flex items-center gap-2 text-xs text-blue-700">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                <span>Vérification automatique toutes les 30 secondes (tentative {pollAttempts}/12)</span>
+              </div>
+            )}
           </div>
         )}
 
