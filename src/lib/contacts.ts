@@ -385,10 +385,10 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
 
   private async searchWithApollo(request: ContactSearchRequest): Promise<ContactSearchResult> {
     console.log('🔍 Recherche via Apollo...');
-    
+
     try {
       const searchParams = this.buildApolloSearchParams(request);
-      
+
       const response = await axios.post(
         `${this.apolloBaseUrl}/mixed_people/search`,
         searchParams,
@@ -400,11 +400,25 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
           timeout: 30000
         }
       );
-      
+
       console.log('✅ Réponse Apollo:', response.data.people?.length || 0, 'contacts');
-      
-      return this.parseApolloResponse(response.data, request);
-      
+
+      // Parse initial response
+      const initialResult = this.parseApolloResponse(response.data, request);
+
+      // Enrich contacts to reveal emails and phone numbers
+      if (initialResult.success && initialResult.contacts.length > 0) {
+        console.log('🔓 Enrichissement des contacts pour révéler emails/téléphones...');
+        const enrichedContacts = await this.enrichApolloContacts(initialResult.contacts);
+
+        return {
+          ...initialResult,
+          contacts: enrichedContacts
+        };
+      }
+
+      return initialResult;
+
     } catch (error: any) {
       console.error('❌ Erreur Apollo:', error.message);
       return {
@@ -414,6 +428,231 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
         error: error.message
       };
     }
+  }
+
+  /**
+   * 🔓 ENRICHMENT - Reveal emails and phone numbers for Apollo contacts
+   *
+   * Now enriches ALL contacts to reveal both emails AND phone numbers via webhook.
+   */
+  private async enrichApolloContacts(contacts: ContactInfo[]): Promise<ContactInfo[]> {
+    const enrichedContacts: ContactInfo[] = [];
+
+    for (const contact of contacts) {
+      try {
+        // Skip if contact already has both email AND phone
+        if (contact.email && contact.phone) {
+          console.log(`✓ Contact ${contact.prenom} ${contact.nom} - déjà complet (email + téléphone)`);
+          enrichedContacts.push(contact);
+          continue;
+        }
+
+        const needsEmail = !contact.email;
+        const needsPhone = !contact.phone;
+        console.log(`🔍 Enrichissement de ${contact.prenom} ${contact.nom} (besoin: ${needsEmail ? 'email' : ''}${needsEmail && needsPhone ? ' + ' : ''}${needsPhone ? 'téléphone' : ''})...`);
+
+        const enrichedData = await this.enrichPersonData({
+          first_name: contact.prenom,
+          last_name: contact.nom,
+          organization_name: contact.linkedin_url ? undefined : contact.poste,
+          linkedin_url: contact.linkedin_url
+        });
+
+        if (enrichedData) {
+          // Merge enriched data with existing contact
+          const mergedContact: ContactInfo = {
+            ...contact,
+            email: enrichedData.email || contact.email,
+            phone: enrichedData.phone || contact.phone,
+            linkedin_url: enrichedData.linkedin_url || contact.linkedin_url,
+            linkedin_headline: enrichedData.linkedin_headline || contact.linkedin_headline
+          };
+
+          console.log(`✅ Enrichi: ${mergedContact.prenom} ${mergedContact.nom}`, {
+            has_email: !!mergedContact.email,
+            has_phone: !!mergedContact.phone
+          });
+
+          enrichedContacts.push(mergedContact);
+        } else {
+          // Keep original contact if enrichment failed
+          console.log(`⚠️ Enrichissement échoué, conservation du contact original`);
+          enrichedContacts.push(contact);
+        }
+
+        // Rate limiting: wait between enrichment calls (includes webhook delay)
+        await this.delay(500);
+
+      } catch (error: any) {
+        console.error(`❌ Erreur enrichissement ${contact.prenom} ${contact.nom}:`, error.message);
+        // Keep original contact on error
+        enrichedContacts.push(contact);
+      }
+    }
+
+    const emailCount = enrichedContacts.filter(c => c.email).length;
+    const phoneCount = enrichedContacts.filter(c => c.phone).length;
+    console.log(`📊 Enrichissement terminé: ${emailCount}/${contacts.length} avec email, ${phoneCount}/${contacts.length} avec téléphone`);
+
+    return enrichedContacts;
+  }
+
+  /**
+   * 🔓 APOLLO PEOPLE ENRICHMENT - Single person enrichment with phone numbers
+   *
+   * This now includes phone number enrichment using our webhook endpoint.
+   * Phone numbers are received asynchronously via webhook and retrieved after a delay.
+   */
+  private async enrichPersonData(params: {
+    first_name?: string;
+    last_name?: string;
+    organization_name?: string;
+    domain?: string;
+    linkedin_url?: string;
+  }): Promise<{
+    email?: string;
+    phone?: string;
+    linkedin_url?: string;
+    linkedin_headline?: string;
+  } | null> {
+
+    try {
+      // Construct webhook URL
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const webhookUrl = `${baseUrl}/api/apollo-webhook`;
+
+      // Check if webhook URL is HTTPS (Apollo requirement)
+      const isHttps = webhookUrl.startsWith('https://');
+
+      const payload: any = {
+        reveal_personal_emails: true
+      };
+
+      // Only request phone numbers if we have a valid HTTPS webhook URL
+      if (isHttps) {
+        payload.reveal_phone_number = true;
+        payload.webhook_url = webhookUrl;
+        console.log(`📞 Requesting phone reveal with webhook: ${webhookUrl}`);
+      } else {
+        console.warn(`⚠️ Skipping phone enrichment - webhook requires HTTPS URL. Current: ${webhookUrl}`);
+        console.warn(`💡 To enable phone numbers: Deploy to production or use ngrok for local HTTPS`);
+      }
+
+      // Add available identifiers
+      if (params.first_name) payload.first_name = params.first_name;
+      if (params.last_name) payload.last_name = params.last_name;
+      if (params.organization_name) payload.organization_name = params.organization_name;
+      if (params.domain) payload.domain = params.domain;
+      if (params.linkedin_url) payload.linkedin_url = params.linkedin_url;
+
+      const response = await axios.post(
+        `${this.apolloBaseUrl}/people/match`,
+        payload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Api-Key': this.apolloApiKey
+          },
+          timeout: 30000
+        }
+      );
+
+      const person = response.data.person;
+
+      if (!person) {
+        console.warn('⚠️ Aucune correspondance trouvée');
+        return null;
+      }
+
+      // Extract email (available immediately)
+      let email: string | undefined;
+      if (person.email) {
+        email = this.validateAndCleanEmail(person.email);
+      }
+
+      // Extract phone from immediate response (may be available)
+      let phone: string | undefined;
+      if (person.phone_numbers && person.phone_numbers.length > 0) {
+        const primaryPhone = person.phone_numbers.find((p: any) => p.type === 'mobile')
+          || person.phone_numbers.find((p: any) => p.type === 'work')
+          || person.phone_numbers[0];
+        phone = this.formatInternationalPhone(primaryPhone.sanitized_number || primaryPhone.raw_number);
+      }
+
+      // Extract LinkedIn info
+      let linkedinUrl: string | undefined;
+      let linkedinHeadline: string | undefined;
+
+      if (person.linkedin_url) {
+        linkedinUrl = this.validateLinkedInUrl(person.linkedin_url);
+      }
+
+      if (person.headline) {
+        linkedinHeadline = person.headline;
+      } else if (person.title) {
+        linkedinHeadline = person.title;
+      }
+
+      // If phone not available immediately, try to retrieve from webhook cache after delay
+      if (!phone && params.first_name && params.last_name && isHttps) {
+        console.log(`⏳ Attente de la réception du téléphone via webhook...`);
+        await this.delay(3000); // Wait 3 seconds for webhook to receive data
+
+        const cachedPhone = await this.retrievePhoneFromWebhook(
+          params.first_name,
+          params.last_name,
+          params.organization_name
+        );
+
+        if (cachedPhone) {
+          phone = cachedPhone;
+          console.log(`✅ Téléphone récupéré via webhook`);
+        }
+      }
+
+      return {
+        email,
+        phone,
+        linkedin_url: linkedinUrl,
+        linkedin_headline: linkedinHeadline
+      };
+
+    } catch (error: any) {
+      if (error.response) {
+        console.error('❌ Erreur API Apollo Enrichment:', error.response.status, error.response.data);
+      } else {
+        console.error('❌ Erreur enrichissement:', error.message);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Retrieve phone number from webhook cache
+   */
+  private async retrievePhoneFromWebhook(
+    firstName: string,
+    lastName: string,
+    organization?: string
+  ): Promise<string | undefined> {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const params = new URLSearchParams({
+        first_name: firstName,
+        last_name: lastName,
+        ...(organization && { organization })
+      });
+
+      const response = await axios.get(`${baseUrl}/api/apollo-webhook?${params}`);
+
+      if (response.data.found && response.data.phone) {
+        return this.formatInternationalPhone(response.data.phone);
+      }
+    } catch (error: any) {
+      console.error('❌ Erreur récupération téléphone webhook:', error.message);
+    }
+
+    return undefined;
   }
 
   private buildApolloSearchParams(request: ContactSearchRequest): any {
