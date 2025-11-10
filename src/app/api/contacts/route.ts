@@ -13,71 +13,6 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
   ]);
 };
 
-// Fonction pour nettoyer et normaliser les noms pour la validation LinkedIn
-const normalizeNameForLinkedIn = (name: string): string => {
-  return name
-    .toLowerCase()
-    .replace(/[àáâãäå]/g, 'a')
-    .replace(/[èéêë]/g, 'e')
-    .replace(/[ìíîï]/g, 'i')
-    .replace(/[òóôõö]/g, 'o')
-    .replace(/[ùúûü]/g, 'u')
-    .replace(/[ç]/g, 'c')
-    .replace(/[ñ]/g, 'n')
-    .replace(/[^a-z0-9]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-};
-
-// Fonction pour valider si une URL LinkedIn correspond au nom de la personne
-const validateLinkedInUrl = (url: string, nom: string, prenom: string): boolean => {
-  if (!url || !url.includes('linkedin.com/in/')) {
-    return false;
-  }
-  
-  try {
-    // Extraire le nom d'utilisateur de l'URL LinkedIn
-    const urlMatch = url.match(/linkedin\.com\/in\/([^/?]+)/);
-    if (!urlMatch) return false;
-    
-    const linkedinUsername = urlMatch[1].toLowerCase();
-    
-    // Normaliser les noms
-    const normalizedPrenom = normalizeNameForLinkedIn(prenom);
-    const normalizedNom = normalizeNameForLinkedIn(nom);
-    
-    // Créer différentes combinaisons possibles
-    const possibleCombinations = [
-      `${normalizedPrenom}-${normalizedNom}`,
-      `${normalizedNom}-${normalizedPrenom}`,
-      `${normalizedPrenom}${normalizedNom}`,
-      `${normalizedNom}${normalizedPrenom}`,
-      normalizedPrenom,
-      normalizedNom
-    ];
-    
-    // Vérifier si l'username LinkedIn correspond à une des combinaisons
-    const matches = possibleCombinations.some(combination => {
-      return linkedinUsername.includes(combination) || 
-             combination.includes(linkedinUsername) ||
-             linkedinUsername === combination;
-    });
-    
-    console.log('🔗 LinkedIn validation:', {
-      url,
-      nom: `${prenom} ${nom}`,
-      linkedinUsername,
-      possibleCombinations,
-      matches
-    });
-    
-    return matches;
-    
-  } catch (error) {
-    console.warn('⚠️ Erreur validation LinkedIn URL:', error);
-    return false;
-  }
-};
 
 interface ContactRequest {
   nomEntreprise: string;
@@ -174,30 +109,17 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
     
-    // Transform the contacts to match frontend expectations with LinkedIn validation
+    // Transform the contacts to match frontend expectations - accept all LinkedIn URLs
     const transformedContacts = contactResult.contacts?.map(contact => {
-      // Valider l'URL LinkedIn avant de l'inclure
-      const hasValidLinkedIn = contact.linkedin_url && contact.nom && contact.prenom ? 
-        validateLinkedInUrl(contact.linkedin_url, contact.nom, contact.prenom) : false;
-      
-      // Log des URLs LinkedIn invalides pour debugging
-      if (contact.linkedin_url && !hasValidLinkedIn) {
-        console.warn('❌ URL LinkedIn invalide détectée:', {
-          nom: `${contact.prenom} ${contact.nom}`,
-          linkedin_url: contact.linkedin_url,
-          raison: 'Ne correspond pas au nom de la personne'
-        });
-      }
-      
       return {
         nom: contact.nom || '',
         prenom: contact.prenom || '',
         poste: contact.poste || '',
         email: contact.email || undefined,
         phone: contact.phone || undefined,
-        linkedin_url: hasValidLinkedIn ? contact.linkedin_url : undefined,
+        linkedin_url: contact.linkedin_url || undefined,
         linkedin_headline: contact.linkedin_headline || undefined,
-        linkedin_verified: hasValidLinkedIn,
+        linkedin_verified: !!contact.linkedin_url,
         verified: contact.verified || false,
         entreprise: requestData.nomEntreprise,
         secteur: requestData.secteurActivite || '',
@@ -215,10 +137,7 @@ export async function POST(request: NextRequest) {
     const linkedinStats = {
       totalContacts: limitedContacts.length,
       contactsWithLinkedIn: limitedContacts.filter(c => c.linkedin_url).length,
-      contactsWithVerifiedLinkedIn: limitedContacts.filter(c => c.linkedin_verified).length,
-      contactsWithInvalidLinkedIn: contactResult.contacts?.filter((original, index) => 
-        original.linkedin_url && !transformedContacts[index]?.linkedin_url
-      ).length || 0
+      contactsWithVerifiedLinkedIn: limitedContacts.filter(c => c.linkedin_verified).length
     };
     
     const roleStats = {

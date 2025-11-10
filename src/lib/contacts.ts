@@ -94,15 +94,39 @@ const DEEP_RESEARCH_CONTACT_SCHEMA = {
   properties: {
     contacts: {
       type: "array",
+      description: "Liste de contacts professionnels réels avec coordonnées complètes",
       items: {
         type: "object",
         properties: {
-          nom: { type: "string" },
-          prenom: { type: "string" },
-          poste: { type: "string" },
-          email: { type: "string" },
-          phone: { type: "string" },
-          linkedin_url: { type: "string" }
+          nom: {
+            type: "string",
+            description: "Nom de famille de la personne"
+          },
+          prenom: {
+            type: "string",
+            description: "Prénom de la personne"
+          },
+          poste: {
+            type: "string",
+            description: "Titre du poste ou fonction actuelle"
+          },
+          email: {
+            type: "string",
+            description: "Adresse email professionnelle directe (format: prenom.nom@entreprise.com). Rechercher activement dans les signatures, communiqués, pages de contact."
+          },
+          phone: {
+            type: "string",
+            description: "Numéro de téléphone direct professionnel au format international (+33...). Rechercher dans les annuaires, communiqués de presse, pages de contact."
+          },
+          linkedin_url: {
+            type: "string",
+            description: "URL complète du profil LinkedIn professionnel (https://www.linkedin.com/in/...). Vérifier que le profil est actif et récent."
+          },
+          sources: {
+            type: "array",
+            description: "URLs des sources où les informations ont été trouvées",
+            items: { type: "string" }
+          }
         },
         required: ["nom", "prenom", "poste"],
         additionalProperties: false
@@ -180,9 +204,9 @@ export class ContactSearchClient {
     const allSources: string[] = [];
 
     // 1️⃣ STANDARD - Recherche coordonnées entreprise (Perplexity Sonar avec JSON Schema)
-    console.log('\n📞 [ÉTAPE 1/3] Recherche coordonnées standard...');
+    console.log('\n📞 [ÉTAPE 1/2] Recherche coordonnées standard...');
     const standardResult = await this.searchCompanyStandardWithRetry(request, 3);
-    
+
     if (standardResult.success && standardResult.contacts.length > 0) {
       const validStandard = this.validateStandardContact(standardResult.contacts[0]);
       if (validStandard) {
@@ -195,33 +219,16 @@ export class ContactSearchClient {
     }
 
     // 2️⃣ APOLLO - Recherche contacts spécifiques
-    console.log('\n🎯 [ÉTAPE 2/3] Recherche contacts Apollo (limite: 8)...');
-    
-    const apolloResult = await this.searchWithApollo({
-      ...request,
-      nombreResultats: 8
-    });
-    
+    console.log('\n🎯 [ÉTAPE 2/2] Recherche contacts Apollo...');
+
+    const apolloResult = await this.searchWithApollo(request);
+
     if (apolloResult.success && apolloResult.contacts.length > 0) {
       allContacts.push(...apolloResult.contacts);
       allSources.push(...apolloResult.sources);
       console.log(`✅ ${apolloResult.contacts.length} contacts Apollo ajoutés`);
     } else {
       console.log('ℹ️ Aucun contact Apollo trouvé');
-    }
-
-    // 3️⃣ DEEP RESEARCH - Recherche approfondie Perplexity
-    console.log('\n🔬 [ÉTAPE 3/3] Recherche Deep Research...');
-    const deepResult = await this.searchWithDeepResearch(request);
-    
-    if (deepResult.success && deepResult.contacts.length > 0) {
-      // Ajouter TOUS les contacts Deep Research directement
-      allContacts.push(...deepResult.contacts);
-      allSources.push(...deepResult.sources);
-      
-      console.log(`✅ ${deepResult.contacts.length} contacts Deep Research ajoutés`);
-    } else {
-      console.log('ℹ️ Aucun contact Deep Research trouvé');
     }
 
     const uniqueSources = [...new Set(allSources)];
@@ -231,7 +238,6 @@ export class ContactSearchClient {
     console.log(`   Total contacts: ${finalCount}`);
     console.log(`   - Standard: ${standardResult.contacts.length}`);
     console.log(`   - Apollo: ${apolloResult.contacts?.length || 0}`);
-    console.log(`   - Deep Research: ${deepResult.contacts?.length || 0}`);
     console.log(`   Sources: ${uniqueSources.join(', ')}`);
 
     if (finalCount === 0) {
@@ -648,7 +654,7 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
   private buildApolloSearchParams(request: ContactSearchRequest): any {
     const searchParams: any = {
       page: 1,
-      per_page: request.nombreResultats || 8,
+      per_page: request.nombreResultats || 12,
       q_organization_name: request.nomEntreprise
     };
 
@@ -826,32 +832,123 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
       ? allRoles.join(', ')
       : 'Responsable achats, Directeur achats, Acheteur, Buyer';
 
-    const prompt = `Trouve des contacts professionnels RÉELS chez "${request.nomEntreprise}"${request.zoneGeographique ? ` en ${request.zoneGeographique}` : ''}.
+    const websiteInfo = request.siteWebEntreprise ? `\nSITE WEB DE L'ENTREPRISE: ${request.siteWebEntreprise}` : '';
+    const locationFilter = request.zoneGeographique ? request.zoneGeographique : '';
+
+    const prompt = `Recherche approfondie de contacts professionnels RÉELS chez "${request.nomEntreprise}"${locationFilter ? ` STRICTEMENT en ${locationFilter}` : ''}.${websiteInfo}
 
 RÔLES RECHERCHÉS: ${rolesText}
 
-Tu dois retourner un JSON avec:
-- contacts: tableau d'objets avec nom, prenom, poste, email (optionnel), phone (optionnel), linkedin_url (optionnel)
+⚠️ CONTRAINTE GÉOGRAPHIQUE ABSOLUE:
+${locationFilter ? `- Tu DOIS UNIQUEMENT trouver des contacts qui travaillent à ${locationFilter}
+- REJETTE IMMÉDIATEMENT tout contact qui n'est PAS basé à ${locationFilter}
+- Vérifie OBLIGATOIREMENT la localisation dans le profil LinkedIn (doit indiquer "${locationFilter}")
+- Si la localisation n'est pas "${locationFilter}", NE PAS INCLURE ce contact
+- EXEMPLE: Si je demande "Paris", rejette les contacts de "Lyon", "Toulouse", "Brésil", etc.` : '- Aucune contrainte géographique spécifique'}
 
-IMPORTANT:
-- Cherche des personnes RÉELLES avec leurs vrais noms
-- Les emails et téléphones sont optionnels
-- Le LinkedIn est optionnel
-- Focus sur la qualité des informations`;
+🎯 OBJECTIF: Trouver AU MINIMUM 6-7 contacts avec coordonnées complètes (nom, prénom, poste, email, téléphone direct, LinkedIn URL exacte) de personnes RÉELLES.
+
+📋 SOURCES PRIORITAIRES À CONSULTER:
+1. LinkedIn - Profils professionnels complets avec coordonnées
+2. Site web de l'entreprise - Pages "Équipe", "Contact", "About Us", sections leadership
+3. Annuaires professionnels - Kompass, Europages, Pages Jaunes Pro
+4. Communiqués de presse - Mentions de responsables avec coordonnées
+5. Articles de presse - Interviews, citations avec informations de contact
+6. Réseaux sociaux professionnels - Twitter, posts de blog d'entreprise
+7. Bases de données publiques - SIRENE, registres commerciaux
+
+📞 EXTRACTION D'EMAILS ET TÉLÉPHONES:
+- Cherche les emails directs professionnels (prenom.nom@entreprise.com)
+- Cherche les numéros de téléphone DIRECTS individuels (pas le standard général)
+- NE JAMAIS inventer ou deviner un numéro - si tu ne trouves pas de ligne directe, laisse vide
+- Vérifie les signatures d'emails dans les communiqués
+- Recherche dans les fichiers PDF publics (rapports annuels, brochures)
+- Consulte les pages "Nous contacter" et organigrammes
+
+🔗 LINKEDIN URLs - RÈGLES STRICTES:
+- Tu DOIS copier l'URL EXACTE du profil LinkedIn trouvé
+- Format attendu: https://www.linkedin.com/in/[username-exact]
+- NE JAMAIS inventer ou modifier l'URL LinkedIn
+- Si tu ne trouves pas le profil LinkedIn exact, laisse le champ vide
+- Vérifie que l'URL existe réellement avant de l'inclure
+
+⚠️ CRITÈRES DE QUALITÉ OBLIGATOIRES:
+- Personnes RÉELLES uniquement (pas de contacts génériques)
+- Emails personnels professionnels (éviter info@, contact@)
+- Téléphones directs UNIQUEMENT (pas de standards +33 1 XX XX XX XX génériques)
+- URLs LinkedIn EXACTES et vérifiables (pas d'URLs inventées)
+- Profils LinkedIn récents et actifs avec localisation vérifiée
+- Informations vérifiées et à jour
+- Minimum 6-7 contacts complets
+
+FORMAT DE RETOUR:
+- contacts: tableau d'objets avec nom, prenom, poste, email, phone, linkedin_url
+- Remplis TOUS les champs possibles pour chaque contact
+- Si un champ n'est pas trouvé, laisse-le vide mais continue à chercher les autres
+
+🔍 STRATÉGIE DE RECHERCHE (OBLIGATOIRE):
+1. Commence par LinkedIn: Recherche "${request.nomEntreprise} ${rolesText}${locationFilter ? ` ${locationFilter}` : ''}"
+2. Site web officiel: Pages équipe, leadership, contacts
+3. Annuaires professionnels: Kompass, Europages, Pages Jaunes avec filtres géographiques
+4. Articles et communiqués: Mentions récentes avec coordonnées
+5. Bases de données: ZoomInfo, RocketReach, Apollo avec filtres de localisation
+6. IMPÉRATIF: Continue jusqu'à avoir 6-7 contacts valides
+7. VÉRIFICATION FINALE: Chaque contact doit avoir la bonne localisation (${locationFilter || 'non spécifiée'})
+
+📊 QUANTITÉ REQUISE: AU MINIMUM 6-7 contacts complets
+Si moins de 6 contacts, continue la recherche avec d'autres sources!`;
 
     const payload = {
       request: {
         model: 'sonar-deep-research',
         messages: [
-          { 
-            role: 'system', 
-            content: 'Tu es un assistant de recherche professionnel. Tu retournes UNIQUEMENT du JSON valide selon le schéma fourni.' 
+          {
+            role: 'system',
+            content: `Tu es un expert en intelligence commerciale et OSINT (Open Source Intelligence) spécialisé dans la recherche de coordonnées professionnelles.
+
+EXPERTISE:
+- Extraction de données de contact depuis sources publiques
+- Validation et vérification croisée d'informations
+- Recherche approfondie sur LinkedIn, sites web d'entreprises, annuaires professionnels
+- Identification d'emails et téléphones directs professionnels
+
+MÉTHODE:
+1. Recherche multi-sources systématique
+2. Priorisation des sources officielles et vérifiées
+3. Extraction méthodique des emails professionnels (format: prenom.nom@entreprise.com)
+4. Recherche de numéros directs dans les annuaires et communiqués
+5. Validation des profils LinkedIn actifs et récents
+
+QUALITÉ:
+- Contacts réels et vérifiables uniquement
+- Maximum d'informations par contact (nom, prénom, poste, email, téléphone, LinkedIn)
+- Préférer 5 contacts complets à 10 contacts incomplets
+- Sources fiables et à jour
+
+Tu retournes UNIQUEMENT du JSON valide selon le schéma fourni, avec le maximum de champs remplis pour chaque contact.`
           },
           { role: 'user', content: prompt }
         ],
         search_mode: 'web',
         reasoning_effort: 'high',
         temperature: 0.0,
+        search_domain_filter: [
+          'linkedin.com',
+          'pages-jaunes.fr',
+          'pagesjaunes.fr',
+          'kompass.com',
+          'europages.com',
+          'societe.com',
+          'verif.com',
+          'companieshouse.gov.uk',
+          'northdata.com',
+          'crunchbase.com',
+          'zoominfo.com',
+          'rocketreach.com',
+          'hunter.io',
+          'apollo.io'
+        ],
+        search_recency_filter: 'month',
         response_format: {
           type: "json_schema",
           json_schema: {
@@ -924,7 +1021,7 @@ IMPORTANT:
 
         if (status === 'COMPLETED' || data.response) {
           console.log(`✅ Job terminé après ${pollCount} polls (${Math.round((Date.now() - startTime) / 1000)}s)`);
-          return this.parseDeepResearchResponse(data, request);
+          return await this.parseDeepResearchResponse(data, request);
         }
 
         if (status === 'FAILED') {
@@ -950,10 +1047,10 @@ IMPORTANT:
   /**
    * 🔥 PARSING AVEC JSON SCHEMA - Parsing simplifié car structure garantie
    */
-  private parseDeepResearchResponse(
+  private async parseDeepResearchResponse(
     data: PerplexityAsyncResponse,
     request: ContactSearchRequest
-  ): ContactSearchResult {
+  ): Promise<ContactSearchResult> {
     
     try {
       const resp = data.response || {};
@@ -980,16 +1077,55 @@ IMPORTANT:
       const searchResults = resp.search_results || [];
       const sources = searchResults.map((s: any) => s.title || s.url || 'Source').slice(0, 5);
 
-      const contacts: ContactInfo[] = (parsed.contacts || [])
+      let contacts: ContactInfo[] = (parsed.contacts || [])
         .map((contact: any) => this.formatDeepResearchContact(contact, request))
         .filter((contact: ContactInfo | null) => contact !== null);
 
       console.log(`✅ ${contacts.length} contacts Deep Research parsés`);
 
+      // 🔥 ENRICHISSEMENT APOLLO pour valider LinkedIns et obtenir téléphones
+      console.log('🔍 Enrichissement Apollo des contacts Deep Research...');
+      const enrichedContacts: ContactInfo[] = [];
+
+      for (const contact of contacts) {
+        try {
+          const enriched = await this.enrichPersonData({
+            first_name: contact.prenom,
+            last_name: contact.nom,
+            organization_name: request.nomEntreprise,
+            domain: request.siteWebEntreprise?.replace(/^https?:\/\/(www\.)?/, ''),
+            linkedin_url: contact.linkedin_url
+          });
+
+          if (enriched) {
+            console.log(`✅ Contact enrichi: ${contact.prenom} ${contact.nom}`);
+            // Merge enriched data with deep research data
+            enrichedContacts.push({
+              ...contact,
+              email: enriched.email || contact.email,
+              phone: enriched.phone || contact.phone, // Apollo phone prioritized
+              linkedin_url: enriched.linkedin_url || contact.linkedin_url, // Apollo LinkedIn verified
+              linkedin_headline: enriched.linkedin_headline || contact.linkedin_headline,
+              verified: true, // Mark as verified by Apollo
+              sources: [...(contact.sources || []), 'Apollo Enrichment']
+            });
+          } else {
+            // Keep original if enrichment fails
+            enrichedContacts.push(contact);
+          }
+        } catch (error: any) {
+          console.warn(`⚠️ Enrichment échoué pour ${contact.prenom} ${contact.nom}:`, error.message);
+          // Keep original contact even if enrichment fails
+          enrichedContacts.push(contact);
+        }
+      }
+
+      console.log(`✅ ${enrichedContacts.length} contacts après enrichissement Apollo`);
+
       return {
-        contacts: contacts,
+        contacts: enrichedContacts,
         sources: sources.length > 0 ? sources : ['Perplexity Deep Research'],
-        success: contacts.length > 0
+        success: enrichedContacts.length > 0
       };
 
     } catch (error: any) {
@@ -1096,28 +1232,20 @@ IMPORTANT:
 
   private validateLinkedInUrl(url: string | null | undefined): string | undefined {
     if (!url) return undefined;
-    
+
     const cleanUrl = url.trim();
-    
-    // Vérifier que c'est une URL LinkedIn valide
-    if (!cleanUrl.includes('linkedin.com/in/')) {
-      return undefined;
-    }
-    
-    // Normaliser l'URL
+    if (!cleanUrl) return undefined;
+
+    // Accept all LinkedIn URLs from Apollo - just normalize the protocol
     let normalizedUrl = cleanUrl;
-    
+
     // Ajouter https:// si manquant
     if (normalizedUrl.startsWith('http://')) {
       normalizedUrl = normalizedUrl.replace('http://', 'https://');
-    } else if (!normalizedUrl.startsWith('https://')) {
+    } else if (!normalizedUrl.startsWith('https://') && !normalizedUrl.startsWith('http://')) {
       normalizedUrl = `https://${normalizedUrl}`;
     }
-    
-    // ✅ PAS de validation sur le nom de la personne
-    // Les usernames LinkedIn peuvent être différents du nom réel
-    // Exemples: "john-smith-12345", "jsmith", "igvillalba", etc.
-    
+
     return normalizedUrl;
   }
 
@@ -1235,15 +1363,35 @@ IMPORTANT:
   private isValidPhone(phone: string): boolean {
     const phoneRegex = /^\+\d{10,15}$/;
     if (!phoneRegex.test(phone)) return false;
-    
+
+    // Reject placeholder and generic patterns
     const invalidPatterns = [
       'telephone_trouvé',
       'numéro_format',
       '0000000000',
       '1111111111'
     ];
-    
-    return !invalidPatterns.some(pattern => phone.includes(pattern));
+
+    if (invalidPatterns.some(pattern => phone.includes(pattern))) {
+      return false;
+    }
+
+    // Reject common generic French switchboard numbers (too generic)
+    const genericFrenchSwitchboards = [
+      '+33141705000',  // Generic Valeo switchboard format
+      '+33140',        // Common Paris switchboard prefix (too generic if it's just switchboard)
+    ];
+
+    // Only reject if it's an EXACT match to known generic switchboards
+    // Allow specific extensions or longer numbers
+    for (const generic of genericFrenchSwitchboards) {
+      if (phone === generic) {
+        console.warn(`⚠️ Rejet du numéro de standard générique: ${phone}`);
+        return false;
+      }
+    }
+
+    return true;
   }
 
   private formatInternationalPhone(phone: string): string {
