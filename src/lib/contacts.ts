@@ -13,6 +13,9 @@ interface ContactInfo {
   verified: boolean;
   sources: string[];
   relevance_score?: number;
+  matchedRoles?: string[];
+  roleScore?: number;
+  isRoleRelevant?: boolean;
 }
 
 interface ContactSearchRequest {
@@ -145,39 +148,40 @@ export class ContactSearchClient {
   private apolloBaseUrl = 'https://api.apollo.io/api/v1';
   private perplexityBaseUrl = 'https://api.perplexity.ai';
 
-  // Mapping des rôles français vers recherche Apollo
+  // Mapping des rôles français vers recherche Apollo - FOCUSED VERSION
+  // Reduced to 1-2 most specific titles per role to avoid fuzzy matching issues
   private roleToTitleMapping: { [key: string]: string[] } = {
-    "Directeur des Achats": ["Director of Purchasing", "Head of Procurement", "Chief Procurement Officer", "Directeur Achats"],
-    "Responsable Achats": ["Purchasing Manager", "Procurement Manager", "Responsable Achats"],
-    "Acheteur": ["Buyer", "Purchaser", "Acheteur"],
-    "Acheteur Senior": ["Senior Buyer", "Senior Purchaser"],
-    "Acheteur Junior": ["Junior Buyer", "Assistant Buyer"],
-    "Acheteur Projet": ["Project Buyer", "Project Purchaser"],
-    "Acheteur Industriel": ["Industrial Buyer", "Manufacturing Buyer"],
-    "Acheteur International": ["International Buyer", "Global Buyer"],
-    "Buyer": ["Buyer", "Purchaser"],
+    "Directeur des Achats": ["Director of Purchasing", "Chief Procurement Officer"],
+    "Responsable Achats": ["Purchasing Manager", "Procurement Manager"],
+    "Acheteur": ["Buyer"],
+    "Acheteur Senior": ["Senior Buyer"],
+    "Acheteur Junior": ["Junior Buyer"],
+    "Acheteur Projet": ["Project Buyer"],
+    "Acheteur Industriel": ["Industrial Buyer"],
+    "Acheteur International": ["International Buyer"],
+    "Buyer": ["Buyer"],
     "Senior Buyer": ["Senior Buyer"],
-    "Junior Buyer": ["Junior Buyer", "Assistant Buyer"],
-    "Commodity Buyer": ["Commodity Buyer", "Commodity Manager"],
-    "Acheteur Commodité": ["Commodity Buyer", "Commodity Manager"],
-    "Acheteur Famille": ["Category Buyer", "Family Buyer"],
-    "Category Buyer": ["Category Buyer", "Category Manager"],
-    "Strategic Buyer": ["Strategic Buyer", "Strategic Sourcing"],
-    "Operational Buyer": ["Operational Buyer", "Tactical Buyer"],
-    "Procurement Manager": ["Procurement Manager", "Purchasing Manager"],
-    "Procurement Specialist": ["Procurement Specialist", "Purchasing Specialist"],
-    "Purchasing Manager": ["Purchasing Manager", "Procurement Manager"],
-    "Head of Procurement": ["Head of Procurement", "Director of Procurement"],
-    "Chief Procurement Officer (CPO)": ["Chief Procurement Officer", "CPO"],
-    "Sourcing Manager": ["Sourcing Manager", "Strategic Sourcing Manager"],
-    "Sourcing Specialist": ["Sourcing Specialist", "Sourcing Analyst"],
-    "Responsable achat": ["Purchasing Manager", "Procurement Manager", "Head of Purchasing"],
-    "Responsable achat ressort": ["Spring Purchasing Manager", "Spring Buyer"],
-    "Acheteur projet": ["Project Buyer", "Project Purchaser"],
-    "Acheteur commodité": ["Commodity Buyer", "Commodity Manager"],
-    "Responsable découpe": ["Cutting Manager", "Cutting Department Head"],
-    "Responsable achat métal": ["Metal Purchasing Manager", "Metal Buyer"],
-    "Responsable Achats/Approvisionnement": ["Purchasing and Supply Manager", "Head of Procurement and Supply"]
+    "Junior Buyer": ["Junior Buyer"],
+    "Commodity Buyer": ["Commodity Buyer"],
+    "Acheteur Commodité": ["Commodity Buyer"],
+    "Acheteur Famille": ["Category Buyer"],
+    "Category Buyer": ["Category Buyer"],
+    "Strategic Buyer": ["Strategic Buyer"],
+    "Operational Buyer": ["Operational Buyer"],
+    "Procurement Manager": ["Procurement Manager"],
+    "Procurement Specialist": ["Procurement Specialist"],
+    "Purchasing Manager": ["Purchasing Manager"],
+    "Head of Procurement": ["Head of Procurement"],
+    "Chief Procurement Officer (CPO)": ["Chief Procurement Officer"],
+    "Sourcing Manager": ["Sourcing Manager"],
+    "Sourcing Specialist": ["Sourcing Specialist"],
+    "Responsable achat": ["Purchasing Manager"],
+    "Responsable achat ressort": ["Spring Buyer"],
+    "Acheteur projet": ["Project Buyer"],
+    "Acheteur commodité": ["Commodity Buyer"],
+    "Responsable découpe": ["Cutting Manager"],
+    "Responsable achat métal": ["Metal Buyer"],
+    "Responsable Achats/Approvisionnement": ["Procurement Manager"]
   };
 
   constructor() {
@@ -654,7 +658,7 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
   private buildApolloSearchParams(request: ContactSearchRequest): any {
     const searchParams: any = {
       page: 1,
-      per_page: 15,
+      per_page: 15, 
       q_organization_name: request.nomEntreprise
     };
 
@@ -672,18 +676,61 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
     }
 
     if (allRoles.length > 0) {
+      // Convert to Apollo titles but be more selective
       const titles = this.convertRolesToApolloTitles(allRoles);
-      if (titles.length > 0) {
-        searchParams.person_titles = titles;
+
+      // ✅ CRITICAL: Only send CORE purchasing/buyer/procurement titles to Apollo
+      // Filter out overly broad titles that cause Apollo to return too many irrelevant results
+      const restrictedTitles = this.filterToCoreTitles(titles);
+
+      if (restrictedTitles.length > 0) {
+        searchParams.person_titles = restrictedTitles;
+        console.log(`🎯 Apollo search with ${restrictedTitles.length} specific titles:`, restrictedTitles);
       }
     }
 
     return searchParams;
   }
 
+  /**
+   * Filter titles to only core purchasing/buyer roles
+   * Removes overly broad titles that cause Apollo to return irrelevant results
+   */
+  private filterToCoreTitles(titles: string[]): string[] {
+    // Keywords that should be EXCLUDED (too broad, cause irrelevant results)
+    const excludeKeywords = [
+      'supply chain',
+      'csr',
+      'sustainable',
+      'communication',
+      'it & telecoms',
+      'head of supply',
+      'logistics'
+    ];
+
+    // Keep only titles that are specifically about purchasing/buying/procurement
+    const filtered = titles.filter(title => {
+      const lowerTitle = title.toLowerCase();
+
+      // Exclude if contains any excluded keywords
+      for (const keyword of excludeKeywords) {
+        if (lowerTitle.includes(keyword)) {
+          console.log(`❌ Excluding broad title from Apollo search: "${title}"`);
+          return false;
+        }
+      }
+
+      // Keep if it contains core purchasing keywords
+      const coreKeywords = ['buyer', 'purchasing', 'procurement', 'acheteur', 'achats', 'buy'];
+      return coreKeywords.some(keyword => lowerTitle.includes(keyword));
+    });
+
+    return filtered;
+  }
+
   private convertRolesToApolloTitles(roles: string[]): string[] {
     const allTitles = new Set<string>();
-    
+
     roles.forEach(role => {
       const mappedTitles = this.roleToTitleMapping[role];
       if (mappedTitles) {
@@ -694,6 +741,49 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
     });
 
     return Array.from(allTitles);
+  }
+
+  /**
+   * Check which requested roles match the contact's job title
+   * Returns the list of matching role names
+   */
+  private getMatchedRoles(
+    contactTitle: string,
+    requestedRoles?: string[],
+    customRole?: string
+  ): string[] {
+    const matched: string[] = [];
+
+    if (!contactTitle) return matched;
+
+    const titleLower = contactTitle.toLowerCase();
+
+    // Combine all requested roles
+    const allRequestedRoles: string[] = [];
+    if (requestedRoles && requestedRoles.length > 0) {
+      allRequestedRoles.push(...requestedRoles);
+    }
+    if (customRole && customRole.trim() !== '') {
+      allRequestedRoles.push(customRole.trim());
+    }
+
+    // For each requested role, check if the contact's title matches
+    for (const role of allRequestedRoles) {
+      const mappedTitles = this.roleToTitleMapping[role] || [role];
+
+      // Check if any of the mapped titles match the contact's title
+      for (const mappedTitle of mappedTitles) {
+        const mappedLower = mappedTitle.toLowerCase();
+
+        // Exact match or partial match
+        if (titleLower === mappedLower || titleLower.includes(mappedLower)) {
+          matched.push(role);
+          break; // Don't add the same role twice
+        }
+      }
+    }
+
+    return matched;
   }
 
   private parseApolloResponse(response: any, request: ContactSearchRequest): ContactSearchResult {
@@ -754,6 +844,10 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
             raw_phone: person.phone_numbers?.[0]
           });
 
+          // Check if this contact's title matches any of the requested roles
+          const matchedRoles = this.getMatchedRoles(person.title || '', request.contactRoles, request.customRole);
+          const roleScore = matchedRoles.length > 0 ? 1.0 : 0.0;
+
           const contact: ContactInfo = {
             nom: person.last_name || '',
             prenom: person.first_name || '',
@@ -764,18 +858,37 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
             linkedin_headline: linkedinHeadline,
             verified: true,
             sources: ['Apollo.io'],
-            relevance_score: 0.7
+            relevance_score: 0.7,
+            matchedRoles: matchedRoles,
+            roleScore: roleScore,
+            isRoleRelevant: matchedRoles.length > 0
           };
 
           console.log('✅ Processed contact:', {
             name: `${contact.prenom} ${contact.nom}`,
+            title: person.title,
+            matchedRoles: matchedRoles,
+            isRelevant: matchedRoles.length > 0,
             has_email: !!contact.email,
             has_phone: !!contact.phone
           });
 
           return contact;
         })
-        .filter((contact: ContactInfo) => contact.nom && contact.prenom && contact.poste);
+        .filter((contact: ContactInfo) => {
+          // Filter: Must have name and title
+          if (!contact.nom || !contact.prenom || !contact.poste) return false;
+
+          // Filter: Must match at least one of the requested roles (if roles were specified)
+          if (request.contactRoles && request.contactRoles.length > 0) {
+            if (contact.matchedRoles && contact.matchedRoles.length === 0) {
+              console.log(`❌ Rejet: ${contact.prenom} ${contact.nom} (${contact.poste}) - Ne correspond à aucun rôle demandé`);
+              return false;
+            }
+          }
+
+          return true;
+        });
 
       return {
         contacts: contacts,

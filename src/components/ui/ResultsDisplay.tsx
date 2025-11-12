@@ -300,7 +300,8 @@ function ContactCard({ contact }: { contact: Contact }) {
   };
 
   const displayEmail = revealedData?.email || (!contact.email?.includes("email_not_unlocked") ? contact.email : null);
-  const displayPhone = revealedData?.phone || contact.phone;
+  // Filter out invalid phone markers like "phone_not_unlocked"
+  const displayPhone = revealedData?.phone || (!contact.phone?.includes("phone_not_unlocked") ? contact.phone : null);
 
   return (
     <Card className="bg-background border border-border/50 shadow-sm hover:shadow-md transition-all duration-300">
@@ -381,11 +382,11 @@ function ContactCard({ contact }: { contact: Contact }) {
         )}
 
         {/* Phone Not Available Message */}
-        {phoneNotFound && revealedData?.phoneStatus === 'not_available' && (
+        {!displayPhone && revealedData && (
           <div className="bg-amber-50/50 rounded-xl p-4 border border-amber-200/50">
             <div className="flex items-center gap-3">
               <Phone className="text-amber-600" size={20} />
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-medium text-amber-900">Numéro de téléphone non disponible</p>
                 <p className="text-xs text-amber-700 mt-0.5">Ce contact n'a pas de numéro enregistré dans la base de données Apollo</p>
               </div>
@@ -404,11 +405,13 @@ function ContactCard({ contact }: { contact: Contact }) {
         <div className="space-y-3">
           {/* Phone - Priority #1 */}
           {displayPhone && (
-            <div className="flex items-center gap-3 bg-blue-50/50 rounded-lg p-3">
+            <div className="flex items-center gap-3 rounded-lg p-3 bg-blue-50/50">
               <Phone className="text-blue-600" size={18} />
-              <a href={`tel:${displayPhone}`} className="text-sm font-medium text-blue-900 hover:underline">
-                {displayPhone}
-              </a>
+              <div className="flex-1">
+                <a href={`tel:${displayPhone}`} className="text-sm font-medium hover:underline text-blue-900">
+                  {displayPhone}
+                </a>
+              </div>
             </div>
           )}
 
