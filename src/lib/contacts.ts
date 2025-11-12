@@ -654,7 +654,7 @@ Retourne un JSON avec les coordonnées trouvées (email et téléphone au format
   private buildApolloSearchParams(request: ContactSearchRequest): any {
     const searchParams: any = {
       page: 1,
-      per_page: request.nombreResultats || 12,
+      per_page: 12,
       q_organization_name: request.nomEntreprise
     };
 
